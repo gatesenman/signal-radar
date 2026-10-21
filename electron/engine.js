@@ -68,6 +68,19 @@ const share = (n, d) => (n + 0.5) / (d + 1);
 
 // v2.9 生命周期分类（借鉴 Exploding Topics 的 exploding/regular/peaked、Treendly 的 pace×type、
 // STL 残差 robust z（周期 7 的周内季节项先扣除）与 Kats CUSUM 单变点思想；均为自写简化实现，无第三方代码）
+// v3.3 短期外推（借鉴 Holt 线性趋势 + Prophet/FPP 的「区间会偏窄，需放大」警告；自写）
+// 只用已完成的有效采集日，向前外推 7 天；区间 = 残差 MAD × 安全系数 × √h，并标注方法与不确定性来源。不伪造历史。
+function forecast7(rate) {
+  const n = rate.length; if (n < 5) return { ok: false, reason: '有效样本 <5 天，不做外推' };
+  const a = .4, b = .3; let L = rate[0], T = rate[1] - rate[0], resid = [];
+  for (let i = 1; i < n; i++) { const f = L + T; resid.push(rate[i] - f); const Ln = a * rate[i] + (1 - a) * (L + T); T = b * (Ln - L) + (1 - b) * T; L = Ln; }
+  const med = x => { const s = [...x].sort((p, q) => p - q); return s.length ? (s[s.length >> 1] + s[(s.length - 1) >> 1]) / 2 : 0; };
+  const mad = Math.max(med(resid.map(Math.abs)) * 1.4826, .05);
+  // 安全系数 1.5：经验上 plug-in 区间偏窄（Chatfield / Makridakis）；向前每步再 ×√h
+  const safety = 1.5, pts = [];
+  for (let h = 1; h <= 7; h++) { const y = Math.max(0, L + h * T), w = mad * safety * Math.sqrt(h); pts.push({ h, y: +y.toFixed(2), lo: +Math.max(0, y - 1.28 * w).toFixed(2), hi: +(y + 1.28 * w).toFixed(2) }); }
+  return { ok: true, method: 'Holt 线性趋势', interval: '约 80%（残差 MAD ×1.5 ×√h，经验放大）', level: +L.toFixed(2), trend: +T.toFixed(2), mad: +mad.toFixed(2), pts, note: '外推不是预测真相；区间偏窄是常见问题，已做经验放大。样本不足 14 天时仅供参考。', provisional: n < 14 };
+}
 function lifecycle(rate) {
   const n = rate.length, med = a => { const b = [...a].sort((x, y) => x - y); return b.length ? (b[b.length >> 1] + b[(b.length - 1) >> 1]) / 2 : 0; };
   const dow = Array.from({ length: 7 }, (_, k) => med(rate.filter((_, i) => i % 7 === k))), overall = med(rate);
@@ -105,7 +118,8 @@ function series(sigs, G, now) { // 归一化日序列（cluster 当日占全局�
   const gd = days.map((_, i) => G.daily[today - 27 + i] || 0), g7 = [...gd.slice(-7)].sort((a, b) => a - b)[3] || 0, from = gd.findIndex(x => x >= g7 * .25);
   const cov = from < 0 ? [] : rate.slice(from, -1) /* 今天未过完，不参与 */, tot0 = raw.slice(Math.max(0, from), -1).reduce((a, b) => a + b, 0);
   const life = cov.length >= 7 && cov.length < 14 && tot0 >= 6 ? { ...lifecycle(cov), covered: cov.length, provisional: true } : cov.length < 14 ? { stage: 'young', pace: 'na', covered: cov.length, z: 0, slope: 0, vol: 0 } : tot0 < 6 ? { stage: 'sparse', pace: 'na', covered: cov.length, z: 0, slope: 0, vol: 0 } : { ...lifecycle(cov), covered: cov.length };
-  return { life, days, raw, rate: rate.map(x => +x.toFixed(2)), w1: +w1.toFixed(2), w2: +w2.toFixed(2), w3: +w3.toFixed(2), velocity: +velocity.toFixed(2), accel: +accel.toFixed(2), oneoff, active, tot };
+  const fc = forecast7(cov.length >= 5 ? cov : rate.filter((_, i) => (G.daily[today - 27 + i] || 0) >= (g7 || 0) * .25));
+  return { life, forecast: fc, days, raw, rate: rate.map(x => +x.toFixed(2)), w1: +w1.toFixed(2), w2: +w2.toFixed(2), w3: +w3.toFixed(2), velocity: +velocity.toFixed(2), accel: +accel.toFixed(2), oneoff, active, tot };
 }
 
 // v3.0 主题命名（借鉴 BERTopic c-TF-IDF 的 reduce_frequent_words（√tf）与 MMR 多样性、Top2Vec 的"贴近质心"代表词；自写实现）

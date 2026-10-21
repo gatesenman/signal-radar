@@ -356,3 +356,30 @@ Windows 包：`release/SignalRadar-Setup-3.1.0-x64.exe`（175,044,272 B）。分
 - UI：`Cite` 组件渲染可点击的 `[n]`，滚动并高亮对应证据行；证据页签顶部增加「主张 ↔ 证据」面板；概览和标准报告的机会陈述旁显示引文。
 - 截图：`shots/v32-detail-evidence.png`（主张旁有蓝色编号，证据表有 [n] 和摘要）。
 - 指标：合理率不变约 86%；E2E **23/23**；启动 1.32s / 2.02s；采集 29.9s（HN）。
+
+## v3.3：多时间窗与短期外推（不伪造历史）
+**1. 行业竞品学习**
+- Exploding Topics / Treendly：多时间窗（3/6/12 月）分类；我们历史不足 14 天，**不做**伪 3/6/12 月窗，只在现有有效采集日上外推。
+- Glimpse：持续增长 vs 一时热潮（v2.9 已做）。
+
+**2. 开源 / 方法**
+- **Holt 线性趋势**（FPP 第 8 章）：水平 + 趋势的指数平滑，h 步预测 = ℓ + h·b。
+  来源：https://otexts.com/fpp3/exponential-smoothing.html
+- **区间偏窄**：Chatfield / Makridakis 指出 plug-in 预测区间通常偏窄；应用上用经验误差或放大系数。
+  来源：https://marketing.wharton.upenn.edu/wp-content/uploads/2020/07/PoF-Extrapolationg-for-Time-Series.pdf
+- **Prophet**：不确定区间假设"未来变点频率与历史相同"，本身也承认覆盖率不可靠。
+  来源：https://github.com/facebook/prophet/blob/main/docs/_docs/uncertainty_intervals.md
+- 我们采用：Holt + 残差 MAD × 1.5 × √h 作为约 80% 区间，并明文标注方法与局限。
+
+**3. 反思**
+
+| 项 | 影响 | 成本 | 决策 |
+|---|---|---|---|
+| 有生命周期但没有"往后看几天"的外推 | 中 | 低 | ✅ |
+| 伪造 3/6/12 月窗 | — | — | ❌ 违反"不伪造历史" |
+| 区间不标注会误导成"精确预测" | 高 | 低 | ✅ 强制标注方法/放大/样本不足 |
+
+**4. 实现**
+- `forecast7()`：仅用有效采集日；样本 <5 天直接拒绝；<14 天标 provisional。
+- 详情时间序列图：历史实线 + 外推虚线 + 上下限点线；文案标明 Holt、约 80% 经验放大区间。
+- 指标：E2E **23/23**；启动 1.41s / 2.04s；采集 30.3s（HN）。合理率不变。外推在样本不足时标「仅供参考」，不计入评分。
