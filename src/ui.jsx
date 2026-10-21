@@ -1,3 +1,4 @@
+import { EXACT } from './i18n-en.js';
 import ICONS from './icons.js';
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as echarts from 'echarts';
@@ -18,7 +19,7 @@ export const Conf = ({ v }) => <span className={'tag ' + (v >= .6 ? 'g' : v >= .
 export const Ev = ({ list }) => list?.length ? <div className="basis">{list.map((e, i) => <div key={i}><I n="links-line" /> <Src s={e.source} /><L u={e.url}>{String(e.title).slice(0, 110)}</L></div>)}</div> : null;
 export const PH = ({ icon, title, sub, children }) => <div className="ph"><div><h1><I n={icon} s={19} />{title}</h1>{sub && <div className="sub">{sub}</div>}</div><span className="sp" />{children}</div>;
 // 图表颜色走设计令牌：option 里写 'var(--x)'，渲染前按当前主题解析为实际颜色；主题切换时重建实例
-const cssVar = s => typeof s === 'string' && s.startsWith('var(') ? getComputedStyle(document.documentElement).getPropertyValue(s.slice(4, -1).split(',')[0].trim()).trim() || s : s;
+const cssVar = s => typeof s === 'string' && localStorage.getItem('lang') === 'en' && EXACT[s] ? EXACT[s] : typeof s === 'string' && s.startsWith('var(') ? getComputedStyle(document.documentElement).getPropertyValue(s.slice(4, -1).split(',')[0].trim()).trim() || s : s;
 const resolve = o => Array.isArray(o) ? o.map(resolve) : o && typeof o === 'object' && !(o instanceof Date) && typeof o !== 'function' ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === 'function' ? v : resolve(v)])) : cssVar(o);
 export const CHART = ['var(--c1)', 'var(--c2)', 'var(--c3)', 'var(--c4)', 'var(--c5)', 'var(--c6)', 'var(--c7)', 'var(--c8)'];
 export function Chart({ option, h = 260, onClick }) {
@@ -27,8 +28,8 @@ export function Chart({ option, h = 260, onClick }) {
   useEffect(() => { inst.current.setOption(resolve({ backgroundColor: 'transparent', color: CHART, textStyle: { fontFamily: 'Noto Sans CJK SC, PingFang SC, sans-serif', color: 'var(--tx2)' }, ...option }), true); inst.current.off('click'); onClick && inst.current.on('click', onClick); }, [option, th]);
   return <div ref={ref} style={{ height: h, width: '100%' }} />;
 }
-export const radarOpt = (o, cmp) => ({ radar: { radius: '66%', indicator: Object.values(D).map(n => ({ name: n, max: 100 })), splitArea: { areaStyle: { color: ['#0e1524', '#111a2c'] } }, axisName: { color: 'var(--mut)', fontSize: 11 } }, legend: cmp ? { bottom: 0, textStyle: { color: 'var(--mut)' } } : undefined,
-  series: [{ type: 'radar', data: [o, ...(cmp ? [cmp] : [])].map((x, i) => ({ name: x.title, value: Object.keys(D).map(k => x.dims[k]), areaStyle: { opacity: .3 }, lineStyle: { width: 2 }, itemStyle: { color: ['#a855f7', 'var(--ok)'][i] }, label: { show: i === 0, color: '#fff', fontSize: 10 } })) }] });
+export const radarOpt = (o, cmp) => ({ radar: { radius: '66%', indicator: Object.values(D).map(n => ({ name: n, max: 100 })), splitArea: { areaStyle: { color: ['var(--panel2)', 'var(--panel)'] } }, axisName: { color: 'var(--mut)', fontSize: 11 } }, legend: cmp ? { bottom: 0, textStyle: { color: 'var(--mut)' } } : undefined,
+  series: [{ type: 'radar', data: [o, ...(cmp ? [cmp] : [])].map((x, i) => ({ name: x.title, value: Object.keys(D).map(k => x.dims[k]), areaStyle: { opacity: .3 }, lineStyle: { width: 2 }, itemStyle: { color: ['var(--c3)', 'var(--ok)'][i] }, label: { show: i === 0, color: 'var(--tx-strong)', fontSize: 10 } })) }] });
 export const grid = { left: 44, right: 16, top: 26, bottom: 26 }, axl = { lineStyle: { color: 'var(--heat0)' } };
 export const Empty = ({ refresh, busy, text }) => <div className="empty card"><I n="radar-line" />{text || '还没有数据。点击「立即采集」从 50+ 个公开来源拉取实时信号。'}<br /><br />{refresh && <button onClick={() => refresh()} disabled={busy}><I n="refresh-line" />立即采集</button>}</div>;
 export { logo, useEffect, useState, useMemo, React };
