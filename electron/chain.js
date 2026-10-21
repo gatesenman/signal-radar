@@ -33,9 +33,10 @@ async function oecNode(hs6) { // OEC/BACI：全球出口国份额与增速
 let MCS = null;
 async function usgsNode(mineral) { // USGS MCS 2025 世界产量
   if (!MCS) { const csv = await get('https://www.sciencebase.gov/catalog/file/get/6798fd34d34ea8c18376e8ee?f=__disk__92%2Ff6%2F90%2F92f690853b1b1dc6a8000c1da24a7bbfd9f670d0', { text: true, timeout: 40000 });
-    MCS = csv.split(/\r?\n/).slice(1).map(l => { const c = l.match(/("([^"]|"")*"|[^,]*)(,|$)/g).map(x => x.replace(/,$/, '').replace(/^"|"$/g, '')); return { com: c[1], country: c[2], type: c[3], p23: +c[5] || 0, p24: +c[6] || 0 }; }); }
-  const rows = MCS.filter(r => r.com.toLowerCase().startsWith(mineral.toLowerCase()) && /production/i.test(r.type) && !/world total|other countries/i.test(r.country) && r.country !== 'United States' || (r.com.toLowerCase().startsWith(mineral.toLowerCase()) && r.country === 'United States' && /production/i.test(r.type)));
-  const type = rows[0]?.type; const rs = rows.filter(r => r.type === type);
+    MCS = csv.split(/\r?\n/).slice(1).filter(l => l.includes(',')).map(l => { const c = l.match(/("([^"]|"")*"|[^,]*)(,|$)/g).map(x => x.replace(/,$/, '').replace(/^"|"$/g, '')); return { com: c[1] || '', country: c[2] || '', type: c[3] || '', p23: +c[5] || 0, p24: +c[6] || 0 }; }); }
+  const rows = MCS.filter(r => r.com.toLowerCase().startsWith(mineral.toLowerCase()) && /production/i.test(r.type) && !/world total|other countries/i.test(r.country));
+  const cnt = {}; for (const r of rows) if (r.country !== 'United States') cnt[r.type] = (cnt[r.type] || 0) + 1; const type = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0]?.[0];
+  const rs = rows.filter(r => r.type === type);
   const t24 = rs.reduce((a, r) => a + r.p24, 0), t23 = rs.reduce((a, r) => a + r.p23, 0);
   const top = rs.map(r => ({ country: r.country, share: r.p24 / (t24 || 1), growth: r.p23 ? +((r.p24 / r.p23 - 1) * 100).toFixed(1) : null })).sort((a, b) => b.share - a.share);
   return { total: null, unit: type, growth: t23 ? +((t24 / t23 - 1) * 100).toFixed(1) : null, top: top.slice(0, 5), hhi: hhi(top.map(x => x.share)), year: 2024, src: 'USGS MCS 2025（产量，2024 为估计）', url: 'https://www.sciencebase.gov/catalog/item/6798fd34d34ea8c18376e8ee' };
@@ -68,11 +69,12 @@ const NACE = { C26: 'C26', C27: 'C27', C28: 'C28', C29: 'C29', C30: 'C30', C21: 
 async function fetchStats(cfg = {}, log = () => {}) {
   const out = { ts: Date.now(), stan: {}, eurostat: {}, bls: {}, ilo: {}, iea: null, errors: [], sources: {} };
   const isics = [...new Set(Object.values(GICS_ISIC))];
-  // OECD STAN：总产出 P1（现价，本币百万）— 美、德、日、韩
-  for (const area of ['USA', 'DEU', 'JPN', 'KOR']) { try {
-    const csv = await get(`https://sdmx.oecd.org/public/rest/data/OECD.STI.PIE,DSD_STAN@DF_STAN,/A.${area}.${isics.join('+')}.P1.V.XDC?startPeriod=2017&format=csv`, { text: true, timeout: 60000 });
-    for (const l of csv.split('\n').slice(1)) { const c = l.split(','); if (c.length < 9) continue; const [, , ar, act, , , , y, v, , mult] = c; const k = ar + ':' + act; if (!out.stan[k] || +y > out.stan[k].year) out.stan[k] = { year: +y, v: +v * 10 ** (+mult || 0), cur: area === 'USA' ? 'USD' : '本币' }; }
-    out.sources.oecd_stan = 'ok'; } catch (e) { out.errors.push('STAN ' + area + ': ' + e.message); out.sources.oecd_stan ||= e.message; } await sleep(800); }
+  // OECD STAN：总产出 P1（现价，本币百万）— 美国；分批请求，500 时逐个回退（部分 ISIC 汇总码不被接受）
+  const stanGet = async codes => { const csv = await get(`https://sdmx.oecd.org/public/rest/data/OECD.STI.PIE,DSD_STAN@DF_STAN,/A.USA.${codes.join('+')}.P1.V.XDC?startPeriod=2017&format=csv`, { text: true, timeout: 60000 }, 2);
+    for (const l of csv.split('\n').slice(1)) { const c = l.split(','); if (c.length < 9) continue; const ar = c[2], act = c[3], y = +c[7], v = +c[8], mult = +c[10] || 0; const k = ar + ':' + act; if (!out.stan[k] || y > out.stan[k].year) out.stan[k] = { year: y, v: v * 10 ** mult, cur: 'USD' }; } };
+  for (let i = 0; i < isics.length; i += 8) { const ch = isics.slice(i, i + 8);
+    try { await stanGet(ch); out.sources.oecd_stan = 'ok'; } catch (e) { for (const c of ch) { try { await stanGet([c]); out.sources.oecd_stan = 'ok'; } catch (e2) { out.errors.push('STAN ' + c + ': ' + e2.message); } await sleep(1500); } } await sleep(1500); }
+  if (!out.sources.oecd_stan) out.sources.oecd_stan = '全部失败';
   // Eurostat SBS：EU27 营业额
   for (const nace of [...new Set(Object.values(NACE))]) { try {
     const d = await get(`https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/sbs_ovw_act?geo=EU27_2020&nace_r2=${nace}&lastTimePeriod=1`, { timeout: 30000 });
@@ -116,8 +118,8 @@ add('crossref', { name: 'Crossref（全学科 DOI 新发表）', cat: '技术', 
   return out.filter(x => x.title); });
 for (const srv of ['biorxiv', 'medrxiv']) add(srv, { name: srv === 'biorxiv' ? 'bioRxiv 预印本' : 'medRxiv 预印本', cat: '技术', kind: 'research', weight: .7, freq: 720, industry: srv === 'biorxiv' ? '352010' : '351020' }, async () => {
   const to = new Date().toISOString().slice(0, 10), from = new Date(Date.now() - 3 * 864e5).toISOString().slice(0, 10); const out = [];
-  for (let c = 0; c < 200; c += 100) { const d = await get(`https://api.biorxiv.org/details/${srv}/${from}/${to}/${c}`, { timeout: 40000 });
-    for (const p of d.collection || []) out.push({ title: p.title, url: `https://doi.org/${p.doi}`, ts: tsOf(p.date), engagement: 0, text: `${p.category} · ${String(p.abstract || '').slice(0, 300)}`, meta: { category: p.category } }); if ((d.collection || []).length < 100) break; }
+  for (let c = 0; c < 150; c += 30) { const d = await get(`https://api.biorxiv.org/details/${srv}/${from}/${to}/${c}`, { timeout: 40000 });
+    for (const p of d.collection || []) out.push({ title: p.title, url: `https://doi.org/${p.doi}`, ts: tsOf(p.date), engagement: 0, text: `${p.category} · ${String(p.abstract || '').slice(0, 300)}`, meta: { category: p.category } }); if ((d.collection || []).length < 30) break; }
   return out; });
 add('core', { name: 'CORE（开放获取全文）', cat: '技术', kind: 'research', weight: .6, freq: 1440, key: 'coreKey' }, async (kw, cfg) => { const out = [];
   for (const q of pick(cfg, 5)) { const d = await get(`https://api.core.ac.uk/v3/search/works?q=${encodeURIComponent(q)}&limit=15&sort=recency`, { headers: { Authorization: 'Bearer ' + cfg.coreKey } });

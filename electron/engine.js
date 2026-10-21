@@ -169,7 +169,9 @@ function tam(o, macro, assump = {}) {
   const gdp = macro?.wb?.gdp?.values, sec = o.industry ? o.industry.slice(0, 2) : null, { SECTOR_SHARE } = require('./macro');
   const a = { niche: assump.niche ?? 0.01, sam: assump.sam ?? 0.2, som: assump.som ?? 0.03, customers: assump.customers ?? 10000, arpuY: assump.arpuY ?? o.unitEcon.arpu * 12, regions: assump.regions ?? ['USA', 'CHN'] };
   const td = { method: '自上而下', steps: [], tam: null };
-  if (gdp && sec && SECTOR_SHARE[sec]) { const [k, f, desc] = SECTOR_SHARE[sec]; const ind = macro.wb[k];
+  const IO = o.industry && macro?.stats ? require('./chain').industryOutput(o.industry, macro.stats) : null;
+  if (IO) { td.steps = [...IO.parts, { k: '行业产出合计（美+欧）', v: IO.total, src: `ISIC/NACE ${IO.isic} ↔ GICS ${o.industry} 映射`, real: true }, { k: '细分赛道占行业比例', v: a.niche, src: '假设（可修改）', pct: true }]; td.tam = IO.total * a.niche; td.basis = 'industry'; }
+  else if (gdp && sec && SECTOR_SHARE[sec]) { const [k, f, desc] = SECTOR_SHARE[sec]; const ind = macro.wb[k];
     let base = 0; for (const r of a.regions) if (gdp[r]?.v) base += gdp[r].v * ((ind?.values?.[r]?.v || 0) / 100) * f;
     td.steps = [{ k: 'GDP（' + a.regions.join('+') + '）', v: a.regions.reduce((s, r) => s + (gdp[r]?.v || 0), 0), src: '世界银行 ' + macro.wb.gdp.id + '（' + (gdp.USA?.year || '') + '）', url: macro.wb.gdp.url, real: true },
       { k: '板块规模', v: base, src: desc + (ind ? '，指标 ' + ind.id : ''), url: ind?.url, real: !/假设/.test(desc) }, { k: '细分赛道占板块比例', v: a.niche, src: '假设（可修改）', pct: true }];
@@ -177,7 +179,7 @@ function tam(o, macro, assump = {}) {
   else td.steps.push({ k: '缺少数据', v: null, src: o.industry ? '宏观数据未加载，请在宏观页刷新' : '未识别行业，无法自上而下估算' });
   const bu = { method: '自下而上', steps: [{ k: '目标客户数', v: a.customers, src: '占位假设，请按实际调研修改' }, { k: '年 ARPU（$）', v: a.arpuY, src: `${o.unitEcon.label} 行业经验假设` }], tam: a.customers * a.arpuY };
   const pick = td.tam || bu.tam;
-  return { assump: a, topDown: td, bottomUp: bu, sam: pick * a.sam, som: pick * a.sam * a.som, note: '自上而下使用世界银行实测 GDP 与产业占比，板块折算系数与细分比例为假设；自下而上全部为假设。两者差异越大，说明假设越需要验证。' };
+  return { assump: a, topDown: td, bottomUp: bu, sam: pick * a.sam, som: pick * a.sam * a.som, note: (td.basis === 'industry' ? '自上而下使用 OECD STAN（美国总产出）与 Eurostat SBS（EU27 营业额）实测行业规模，仅细分比例与汇率为假设' : '自上而下使用世界银行实测 GDP 与产业占比（该行业暂无 STAN/Eurostat 映射），板块折算系数与细分比例为假设') + '；自下而上全部为假设。两者差异越大，说明假设越需要验证。' };
 }
 
 function ruleAnalysis(o) {

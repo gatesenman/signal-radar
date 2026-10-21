@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, Notification, shell, Menu, nativeIm
 const path = require('path'), fs = require('fs');
 const initSqlJs = require('sql.js');
 const { SOURCES, UNAVAILABLE } = require('./collectors'); require('./extra');
-const E = require('./engine'), EMB = require('./embed'), M = require('./macro');
+const E = require('./engine'), EMB = require('./embed'), M = require('./macro'), CH = require('./chain');
 const { INDUSTRIES, SECTORS, GB } = require('./industries');
 
 let db, dbFile, win, timer, busy = false, saveT, lastCluster = {};
@@ -69,8 +69,13 @@ async function refresh(opt = {}) {
   setK('srcState', state); save(true);
   try { await embedPending(); } catch (e) { log('嵌入失败：' + e.message); }
   if (!getK('macro') || Date.now() - getK('macro').ts > 86400e3) await refreshMacro();
+  if (!getK('chain') || Date.now() - getK('chain').ts > 7 * 86400e3) await refreshChain();
+  if (!getK('istats') || Date.now() - getK('istats').ts > 7 * 86400e3) await refreshStats();
   await recluster(); checkAlerts(); save(true); busy = false; send('refreshed', report); return report;
 }
+async function refreshChain() { try { const c = await CH.fetchChain(getCfg(), log); setK('chain', c); return c; } catch (e) { log('产业链失败：' + e.message); } }
+async function refreshStats() { try { const s = await CH.fetchStats(getCfg(), log); setK('istats', s); return s; } catch (e) { log('行业统计失败：' + e.message); } }
+function chainFor(code, chain) { if (!chain || !code) return null; return chain.chains[code] ? { code, ...chain.chains[code] } : (Object.entries(chain.chains).find(([k]) => k.slice(0, 4) === code.slice(0, 4)) || []).length ? (([k, v]) => ({ code: k, ...v }))(Object.entries(chain.chains).find(([k]) => k.slice(0, 4) === code.slice(0, 4))) : null; }
 async function refreshMacro() { try { const m = await M.fetchMacro(getCfg()); setK('macro', m); log(`宏观数据更新：世界银行 ${Object.keys(m.wb).length} 项，IMF ${Object.keys(m.imf).length}，FRED ${Object.keys(m.fred).length}，Comtrade ${m.comtrade ? m.comtrade.rows.length + ' 章' : '失败'}`); return m; } catch (e) { log('宏观数据失败：' + e.message); } }
 async function recluster() {
   const cfg = getCfg(), t0 = Date.now();
@@ -82,11 +87,14 @@ async function recluster() {
 }
 function ws(id) { const r = all('SELECT json FROM workspace WHERE opp_id=?', [id])[0]; return r ? JSON.parse(r.json) : {}; }
 function setWs(id, patch) { const w = { ...ws(id), ...patch, updatedAt: Date.now() }; for (const k in patch) if (patch[k] === undefined) delete w[k]; run('INSERT OR REPLACE INTO workspace VALUES(?,?)', [id, JSON.stringify(w)]); save(); return w; }
-function merged(o, macro) { const w = ws(o.id); const l = w.llm || {};
+function merged(o, macro) { const w = ws(o.id); const l = w.llm || {}; const ch = chainLink(o, macro?.chainData);
+  const asymmetry = [...(o.asymmetry || []), ...(ch?.chokes || []).slice(0, 2).map(c => ({ key: 'choke', type: '产业链卡脖子', gap: 80, desc: `${ch.name} ${c.node}：${c.why}`, evidence: [{ title: c.node + ' 出口国份额（OEC/USGS）', url: c.url, source: 'chain' }] }))];
   const dims = l.dims || o.dims; const delta = l.dims ? Object.keys(dims).reduce((a, k) => a + dims[k] - o.dims[k], 0) / 6 : 0;
   const ue = { ...o.unitEcon, ...(w.unitEcon || {}) };
-  return { ...o, ...l, dims, unitEcon: ue, statement: l.statement || o.statement, checklist: w.checklist || l.checklist || o.checklist, stage: w.stage || 'discover', notes: w.notes || '', watched: !!w.watched, ruleTotal: o.total, total: Math.round(o.total + delta), comments: w.comments || [], tam: E.tam({ ...o, unitEcon: ue }, macro, w.assump || {}), assump: w.assump || {} }; }
-function getOpps() { const macro = getK('macro'); const ids = new Set(); const list = all('SELECT json FROM opps ORDER BY total DESC').map(r => { const o = JSON.parse(r.json); ids.add(o.id); return merged(o, macro); });
+  return { ...o, ...l, dims, unitEcon: ue, statement: l.statement || o.statement, checklist: w.checklist || l.checklist || o.checklist, stage: w.stage || 'discover', notes: w.notes || '', watched: !!w.watched, ruleTotal: o.total, total: Math.round(o.total + delta), comments: w.comments || [], tam: E.tam({ ...o, unitEcon: ue }, macro, w.assump || {}), assump: w.assump || {}, chain: ch, asymmetry }; }
+function chainLink(o, chain) { const c = chainFor(o.industry, chain); if (!c) return null; const chokes = c.nodes.filter(n => n.choke);
+  return { code: c.code, name: c.name, nodes: c.nodes, chokes: chokes.map(n => ({ node: n.stage + '·' + n.name, why: n.chokeWhy, growth: n.growth, url: n.url })) }; }
+function getOpps() { const macro = { ...(getK('macro') || {}), stats: getK('istats'), chainData: getK('chain') }; const ids = new Set(); const list = all('SELECT json FROM opps ORDER BY total DESC').map(r => { const o = JSON.parse(r.json); ids.add(o.id); return merged(o, macro); });
   for (const r of all('SELECT * FROM workspace')) { const w = JSON.parse(r.json); if (!ids.has(r.opp_id) && w.snapshot && ((w.stage && w.stage !== 'discover') || w.watched)) list.push({ ...merged(w.snapshot, macro), stale: true }); }
   return list; }
 function checkAlerts() {
@@ -109,6 +117,16 @@ function health(id) { const s = SOURCES[id], cfg = getCfg(); const rs = all('SEL
   const ok = rs.filter(r => r.ok).length / rs.length, last = rs[0];
   return { status: last.ok && ok >= .8 ? 'healthy' : last.ok || ok >= .5 ? 'degraded' : 'down', label: last.ok && ok >= .8 ? '健康' : last.ok || ok >= .5 ? '不稳定' : '故障', okRate: +ok.toFixed(2), avgMs: Math.round(rs.reduce((a, r) => a + r.ms, 0) / rs.length), last, lastOk: all('SELECT ts,count FROM runs WHERE source=? AND ok=1 ORDER BY id DESC LIMIT 1', [id])[0] };
 }
+const REGIONS = [['cn', '中国', /china|chinese|beijing|shanghai|shenzhen|中国|北京|上海|深圳|广东|浙江|江苏|国务院|人民币|亿元/i], ['us', '美国', /\bU\.?S\.?\b|united states|america|silicon valley|new york|california|美国|硅谷/i], ['eu', '欧洲', /\beu\b|europe|germany|france|uk\b|britain|london|berlin|paris|italy|spain|netherlands|sweden|欧盟|欧洲|德国|法国|英国/i], ['jp', '日本', /japan|tokyo|日本|东京/i], ['kr', '韩国', /korea|seoul|samsung|韩国|首尔/i], ['in', '印度', /\bindia|indian|bangalore|mumbai|印度/i], ['sea', '东南亚', /singapore|indonesia|vietnam|thailand|malaysia|philippines|东南亚|新加坡|印尼|越南|泰国|马来西亚/i], ['latam', '拉美', /brazil|mexico|argentina|chile|colombia|latin america|巴西|墨西哥|拉美|阿根廷/i], ['me', '中东', /saudi|uae|dubai|israel|qatar|middle east|沙特|阿联酋|迪拜|以色列|中东/i], ['af', '非洲', /africa|nigeria|kenya|egypt|south africa|非洲|尼日利亚|肯尼亚|埃及/i]];
+function regionOf(s) { const t = s.title + ' ' + (s.text || '').slice(0, 300); const hit = REGIONS.filter(([, , re]) => re.test(t)).map(r => r[0]); if (!hit.length && s.region === 'cn') hit.push('cn'); return hit; }
+function regionCoverage(since) { const sigs = all('SELECT title,text,region,source,ind FROM signals WHERE ts>?', [since]); const m = Object.fromEntries(REGIONS.map(([k, n]) => [k, { key: k, name: n, signals: 0, sources: new Set(), inds: new Set() }]));
+  for (const s of sigs) for (const r of regionOf(s)) { m[r].signals++; m[r].sources.add(s.source); if (s.ind) m[r].inds.add(s.ind); }
+  return Object.values(m).map(r => ({ ...r, sources: r.sources.size, inds: r.inds.size, status: r.signals >= 200 && r.sources >= 8 ? 'good' : r.signals >= 50 && r.sources >= 3 ? 'ok' : 'gap' })); }
+function paperStats() { const now = Math.floor(Date.now() / 1000), d14 = now - 14 * 86400, d28 = now - 28 * 86400;
+  const rows = all("SELECT ind, kind, ts, engagement, source FROM signals WHERE ts>? AND ind IS NOT NULL", [now - 60 * 86400]); const m = {};
+  for (const r of rows) { const x = m[r.ind] ||= { r14: 0, r28: 0, cit14: 0, cit28: 0, prod: 0, papers: 0 }; if (r.kind === 'research') { x.papers++; if (r.ts > d14) { x.r14++; x.cit14 += r.engagement || 0; } else if (r.ts > d28) { x.r28++; x.cit28 += r.engagement || 0; } } if (r.kind === 'product' || r.kind === 'supply') x.prod++; }
+  return INDUSTRIES.map(i => { const x = m[i.code] || { r14: 0, r28: 0, cit14: 0, cit28: 0, prod: 0, papers: 0 };
+    return { code: i.code, cn: i.cn, sector: i.sectorCn, papers: x.papers, growth: x.r28 ? +((x.r14 / x.r28 - 1) * 100).toFixed(0) : null, citAccel: x.r14 && x.r28 ? +((x.cit14 / x.r14) - (x.cit28 / x.r28)).toFixed(1) : null, products: x.prod, gap: +Math.log2((x.papers + 1) / (x.prod + 1)).toFixed(2) }; }).sort((a, b) => b.gap - a.gap); }
 function coverage() { const since = Math.floor(Date.now() / 1000) - 30 * 86400;
   const rows = all('SELECT ind, COUNT(*) n, COUNT(DISTINCT source) s FROM signals WHERE ts>? AND ind IS NOT NULL GROUP BY ind', [since]); const m = Object.fromEntries(rows.map(r => [r.ind, r]));
   const by = all('SELECT ind_by, COUNT(*) n FROM signals WHERE ts>? GROUP BY ind_by', [since]);
@@ -116,7 +134,7 @@ function coverage() { const since = Math.floor(Date.now() / 1000) - 30 * 86400;
   const opps = getOpps(); const oc = {}; for (const o of opps) if (o.industry) oc[o.industry] = (oc[o.industry] || 0) + 1;
   const list = INDUSTRIES.map(i => { const r = m[i.code] || { n: 0, s: 0 }; const status = r.n >= 10 && r.s >= 3 ? 'good' : r.n >= 5 && r.s >= 2 ? 'ok' : 'gap'; return { ...i, signals: r.n, sources: r.s, opps: oc[i.code] || 0, status, topSources: srcBy.filter(x => x.ind === i.code).sort((a, b) => b.n - a.n).slice(0, 4).map(x => x.source + ' ' + x.n) }; });
   const total = all('SELECT COUNT(*) n FROM signals WHERE ts>?', [since])[0].n;
-  return { list, sectors: SECTORS, gb: GB, covered: list.filter(x => x.status !== 'gap').length, good: list.filter(x => x.status === 'good').length, total: list.length, tagged: rows.reduce((a, r) => a + r.n, 0), signals: total, tagBy: by }; }
+  return { regions: regionCoverage(since), list, sectors: SECTORS, gb: GB, covered: list.filter(x => x.status !== 'gap').length, good: list.filter(x => x.status === 'good').length, total: list.length, tagged: rows.reduce((a, r) => a + r.n, 0), signals: total, tagBy: by }; }
 
 // ---------- 报告 ----------
 const D = { market: '市场规模', growth: '增长动能', competition: '竞争(反向)', moat: '可防御性', monetization: '变现清晰度', fit: '创始人匹配' };
@@ -156,6 +174,10 @@ const H = {
   'coverage': () => coverage(), 'industries': () => INDUSTRIES,
   'macro:get': () => getK('macro'), 'macro:refresh': async () => { const m = await refreshMacro(); save(); return m; },
   'opps:list': () => getOpps(),
+  'chain:get': () => ({ chain: getK('chain'), opps: getOpps().filter(o => o.chain).map(o => ({ id: o.id, title: o.title, total: o.total, industry: o.industry, chain: o.chain.code, noise: o.quality?.noise })) }),
+  'chain:refresh': async () => { const c = await refreshChain(); save(); return c; },
+  'stats:get': () => getK('istats'), 'stats:refresh': async () => { const s = await refreshStats(); save(); return s; },
+  'papers': () => paperStats(),
   'opp:update': (_, id, patch) => { if (!ws(id).snapshot) { const j = all('SELECT json FROM opps WHERE id=?', [id])[0]?.json; if (j) patch.snapshot = JSON.parse(j); } return setWs(id, patch); },
   'opp:llm': async (_, id) => { const cfg = getCfg(); if (!E.llmEnabled(cfg)) throw new Error('未配置 LLM：请在设置中填写 OpenAI 兼容 Key 或 Ollama 地址'); const o = JSON.parse(all('SELECT json FROM opps WHERE id=?', [id])[0]?.json || JSON.stringify(ws(id).snapshot)); const llm = await E.llmAnalyze(o, cfg); setWs(id, { llm, snapshot: o, checklist: undefined }); return true; },
   'llm:test': async () => { const cfg = getCfg(); if (!E.llmEnabled(cfg)) return { ok: false, msg: '未配置' }; try { await E.llmCall('返回 JSON {"ok":true}', cfg); return { ok: true, msg: '连接成功' }; } catch (e) { return { ok: false, msg: e.message }; } },
