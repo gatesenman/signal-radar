@@ -68,6 +68,7 @@ export function Dims({ open }) {
         <div style={{ fontSize: 12, margin: '6px 0' }}>{c.why}</div>
         <div className="row" style={{ flexWrap: 'wrap', gap: 6, fontSize: 11 }}>{Object.entries(c.metrics || {}).map(([k, v]) => <span key={k} className="tag"><span className="prov m" title="实测">●</span> {k}：{String(v)}</span>)}</div>
         <div className="mut" style={{ fontSize: 11, marginTop: 4 }}><I n="ruler-line" /> 判定规则：{c.rule}</div>
+        {c.localize && <div className="loc" style={{ fontSize: 11, marginTop: 6 }}><b>本地化检查</b>{c.localize.map(x => <div key={x.k} className="mut">· {x.k}：{x.q} <span style={{ color: 'var(--warn)' }}>{x.hit}</span></div>)}</div>}
         <div style={{ fontSize: 11, marginTop: 4 }}>{c.evidence?.slice(0, 3).map((e, i) => <div key={i}><L u={e.url}>{e.title?.slice(0, 90)}</L> <span className="mut">{e.source}</span></div>)}</div>
       </div>)}</div></>;
 }

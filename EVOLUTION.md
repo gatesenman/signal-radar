@@ -481,3 +481,18 @@ Windows 包：`release/SignalRadar-Setup-3.7.0-x64.exe`（175,049,369 B）。分
 4. 开机自启界面开关（设置页 → 基本；打包后生效，以 `--hidden` 最小化启动）。中/低
 **抽检（120 个机会）**：人才项取值从 v3.8 前的约 1 种变为 37 种；84 个机会有关联招聘；44 个被资讯纠偏（例：「机器人·破产·订单」×0.72、「融资·完成·亿元」×0.71）。**问题**：44/120 偏多，主要是中文新闻源占比高导致，后续可按来源类别再细分。
 **E2E**：23/23；启动 2.06s/1.38s（首次启动受机器负载影响）；采集 28.4s。
+
+## v4.0 — 商业模式迁移 / 地域套利覆盖面
+**学习**
+- Startup Lanes《Geographic Arbitrage》：黄金法则「Don't just copy, adapt」，落地前做本地化检查：合规、文化、价格、需求验证（Mom Test）— https://www.startuplanes.com/ebook/building-startup-and-raising-funds/spot-problem-worth-solving/geographic-arbitrage/
+- HBS 工作论文：中国模式被印度模仿（PhonePe/Groww 等），迁移的是模式而非产品 — https://www.hbs.edu/ris/Publication%20Files/25-017_168eda2e-2f4b-4a2d-b5b4-d6e58e60c7cd.pdf
+- California Management Review《When and Why Do Investors Prefer Copycats?》：新兴市场的「未饱和」是复制模式的价值来源 — https://cmr.berkeley.edu/2024/11/when-and-why-do-investors-prefer-copycats/
+- Times of India《Imitation is innovation》：Tracxn 统计「美国每有一家获投公司，印度约有 50 家 me-too」；OYO 从「印度 Airbnb」转向标准化酒店 — https://timesofindia.indiatimes.com/tech-news/imitation-is-innovation/articleshow/48907419.cms
+**开源**：没有找到成熟的「模式迁移检测」开源项目；本轮为自研规则。
+**反思**
+1. 错误假设：「地域套利只能在簇级发现」——簇本身就是同语种聚出来的，中英信号很少落在同一簇，于是簇级规则几乎触发不了。→ 新增**行业级**规则：同一行业一侧融资/产品验证≥5、另一侧≤1，且按全库中英比例另一侧本应≥2。高/低
+2. 簇级阈值略放宽（已验证≥2、偏离≥2.8 倍）。中/低
+3. 卡片只给分数、不给落地检查 → 地域套利/模式迁移卡附「本地化检查」四项（合规/文化渠道/价格/需求验证），能从证据里自动判断的给提示，判断不了的明确写「需人工判断」。中/低
+**抽检**：地域套利卡 2 → 8（新增汽车/综合零售「中→海外」，生命科学工具、医疗保健技术、航空货运「海外→中」等）；模式迁移卡仍为 1。
+**问题**：「汽车：中文侧已验证」很可能是来源偏差（36kr 快讯以中文为主、英文汽车源少），不一定是真实的市场空白，卡上已写明是按基线比例判断；模式迁移受限于需求源数量，本轮没有改善。
+**E2E**：23/23；启动 1.28s/1.36s；采集 64.7s（比上轮慢一倍多，测试期间机器上有其他重负载，未单独复现）。注：本轮 E2E 时 main.js 已含 v4.1 的个性化代码。
