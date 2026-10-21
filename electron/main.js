@@ -230,7 +230,7 @@ async function saveDoc(md, name, fmt) { const r = await dialog.showSaveDialog(wi
 const H = {
   'win:min': () => win.minimize(), 'win:max': () => (win.isMaximized() ? win.unmaximize() : win.maximize()), 'win:close': () => win.close(), 'win:state': () => ({ max: win.isMaximized() }), 'app:reload': () => win.reload(), 'app:devtools': () => win.webContents.toggleDevTools(), 'app:quit': () => app.quit(),
   'cfg:get': () => getCfg(),
-  'cfg:set': (_, c) => { for (const [k, v] of Object.entries(c)) setK(k, v); save(); schedule(); return getCfg(); },
+  'cfg:set': (_, c) => { for (const [k, v] of Object.entries(c)) setK(k, v); if ('openAtLogin' in c && app.isPackaged) try { app.setLoginItemSettings({ openAtLogin: !!c.openAtLogin, args: ['--hidden'] }); } catch (e) { log('开机自启设置失败：' + e.message); } save(); schedule(); return getCfg(); },
   'sources:list': () => { const cfg = getCfg(); return [...Object.entries(SOURCES).map(([id, s]) => ({ id, name: s.name, cat: s.cat, kind: s.kind, key: s.key || null, weight: srcWeight(id, cfg), defWeight: s.weight, freq: s.freq, total: all('SELECT COUNT(*) n FROM signals WHERE source=?', [id])[0].n, ...health(id) })), ...UNAVAILABLE.map(([id, name, why]) => ({ id, name, cat: '—', status: 'unavailable', label: '不可用', why, total: 0 }))]; },
   'refresh': (_, opt) => refresh(opt || {}),
   'recluster': async () => { await recluster(); save(); return true; },
@@ -287,6 +287,7 @@ app.whenReady().then(async () => {
   await initDb(); Menu.setApplicationMenu(null);
   const icon = path.join(__dirname, '..', 'build', 'icon.png');
   win = new BrowserWindow({ width: 1440, height: 900, minWidth: 1100, minHeight: 700, frame: false, backgroundColor: '#0b0f17', title: '商机雷达 Signal Radar', icon: fs.existsSync(icon) ? nativeImage.createFromPath(icon) : undefined, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true } });
+  if (process.argv.includes('--hidden')) win.once('ready-to-show', () => win.minimize()); // 开机自启：最小化启动
   win.on('maximize', () => send('win', { max: true })); win.on('unmaximize', () => send('win', { max: false }));
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
   await win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));

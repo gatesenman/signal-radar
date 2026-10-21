@@ -45,7 +45,7 @@ function cluster(signals, cfg = {}, ctx = {}) {
   const keep = C.filter(c => { const src = new Set(c.m.map(s => s.source)); return (c.m.length >= 4 && src.size >= 2) || c.m.length >= 10; });
   const opps = keep.map(c => buildOpp(c, G, df, pool.length, now, cfg, ctx)).filter(Boolean);
   for (const o of opps) qualityGate(o);
-  mosaic(opps);
+  mosaic(opps, pool);
   opps.sort((a, b) => b.total - a.total);
   return { opps: opps.slice(0, +cfg.maxThemes || 120), baseline: G, clusters: C.length, pool: pool.length };
 }
@@ -143,12 +143,21 @@ function topicTerms(sigs, df, N) {
 // v3.1 机会体检分（借鉴 CB Insights Mosaic 的 Momentum / Market / Money / Management 四要素与 0–1000 刻度，Crunchbase Growth Score 的"自身与同类比较"）
 // 我们的口径（权重为本应用的假设，非 CB Insights 权重）：动能 40%（增长分 + 生命周期）、市场 25%（同行业其它簇的融资事件，衡量赛道资金热度）、
 // 资金 25%（本簇融资事件数与披露金额）、人才 10%（招聘信号）。各要素先在当前所有簇中做百分位，再加权 ×10 → 0–1000。
-function mosaic(opps) {
+function mosaic(opps, pool = []) {
+  // v3.9 人才项：簇内招聘 + 同行业/同主题词的全局招聘信号（簇内招聘几乎总是 0）
+  const jobs = pool.filter(s => s.kind === 'jobs').map(s => ({ ind: tagIndustry(s)[0], t: (s.title + ' ' + (s.text || '').slice(0, 200)).toLowerCase() }));
+  for (const o of opps) { const tm = (o.terms || []).slice(0, 4).map(x => String(x).toLowerCase()).filter(x => x.length >= 3);
+    const linked = jobs.filter(j => (o.industry && j.ind === o.industry) || tm.some(x => j.t.includes(x))).length;
+    o.talentLinked = { inCluster: o.kinds?.jobs || 0, linked }; }
   const indF = {}; for (const o of opps) if (o.industry) indF[o.industry] = (indF[o.industry] || 0) + (o.fundings || []).length;
-  const raw = opps.map(o => { const L = o.ts?.life, f = o.fundings || []; return { momentum: (o.dims?.growth || 0) + (L && !L.provisional ? (L.stage === 'exploding' ? 10 : L.stage === 'peaked' || L.stage === 'declining' ? -10 : 0) : 0), market: o.industry ? (indF[o.industry] || 0) - f.length : 0, money: f.length + Math.log10(1 + f.reduce((a, x) => a + (x.amountM || 0), 0)), talent: (o.kinds?.jobs || 0) }; });
+  const raw = opps.map(o => { const L = o.ts?.life, f = o.fundings || []; return { momentum: (o.dims?.growth || 0) + (L && !L.provisional ? (L.stage === 'exploding' ? 10 : L.stage === 'peaked' || L.stage === 'declining' ? -10 : 0) : 0), market: o.industry ? (indF[o.industry] || 0) - f.length : 0, money: f.length + Math.log10(1 + f.reduce((a, x) => a + (x.amountM || 0), 0)), talent: (o.kinds?.jobs || 0) * 2 + Math.log2(1 + (o.talentLinked?.linked || 0)) }; });
   const pct = k => { const v = raw.map(r => r[k]), s = [...v].sort((a, b) => a - b); return v.map(x => s.length > 1 ? (s.filter(y => y < x).length + s.filter(y => y === x).length / 2) / s.length * 100 : 50); };
   const P = { momentum: pct('momentum'), market: pct('market'), money: pct('money'), talent: pct('talent') }, W = { momentum: .4, market: .25, money: .25, talent: .1 };
-  opps.forEach((o, i) => { const parts = Object.fromEntries(Object.keys(W).map(k => [k, Math.round(P[k][i])])); o.mosaic = { score: Math.round(Object.entries(W).reduce((a, [k, w]) => a + parts[k] * w, 0) * 10), parts, raw: raw[i], weights: W }; });
+  opps.forEach((o, i) => { const parts = Object.fromEntries(Object.keys(W).map(k => [k, Math.round(P[k][i])])); const n = o.metrics?.signals || 1, ns = (o.kinds?.news || 0) / n, other = Object.keys(o.kinds || {}).filter(k => k !== 'news' && o.kinds[k] > 0).length;
+    // v3.9 资讯纠偏：新闻占比 >60% 且非新闻证据类型 <2 时，最多扣 30%
+    const newsAdj = ns > .6 && other < 2 ? Math.max(.7, 1 - (ns - .6) * .75) : 1;
+    const Wi = raw[i].talent > 0 ? W : { momentum: .4 / .9, market: .25 / .9, money: .25 / .9, talent: 0 }; // 参照 Mosaic：缺失分项时权重重分配
+    o.mosaic = { score: Math.round(Object.entries(Wi).reduce((a, [k, w]) => a + parts[k] * w, 0) * 10 * newsAdj), parts, raw: raw[i], weights: Wi, newsShare: +ns.toFixed(2), newsAdj: +newsAdj.toFixed(2), talentLinked: o.talentLinked }; });
 }
 function buildOpp(c, G, df, N, now, cfg, ctx) {
   const sigs = c.m; sigs.sort((a, b) => b.ts - a.ts);
