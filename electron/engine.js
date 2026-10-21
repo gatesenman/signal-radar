@@ -163,7 +163,11 @@ function buildOpp(c, G, df, N, now, cfg, ctx) {
   const formD = by('funding').filter(s => s.source === 'sec_formd');
   const money = (text.match(/\b(pricing|paid|revenue|subscription|saas|customers|mrr|arr|enterprise|b2b|monetiz\w*|contract|procurement|tender)\b|收费|付费|营收|订单|采购|中标/g) || []).length;
   const pains = sigs.filter(s => s.pain || /alternative|frustrat|struggl|hate|broken|expensive|looking for|is there a|求推荐|有没有|吐槽|痛点|难用/i.test(s.title));
-  const ev = (arr, k = 3) => arr.slice(0, k).map(s => ({ title: s.title, url: s.url, source: s.source }));
+  // v3.2 证据链：全局编号引文（借鉴 AlphaSense 的 inline citation + LlamaIndex CitationQueryEngine 的「Source N」编号；自写）
+  const pool = [], seen = new Map();
+  const cite = (arr, k = 3) => { const refs = []; for (const s of (arr || []).slice(0, k)) { if (!s?.url && !s?.id) continue; const key = s.id || (s.source + '|' + s.url); let n = seen.get(key); if (!n) { n = pool.length + 1; seen.set(key, n); pool.push({ n, id: s.id, title: s.title, url: s.url, source: s.source, kind: s.kind, ts: s.ts, engagement: s.engagement, region: s.region, snippet: String(s.text || '').replace(/\s+/g, ' ').trim().slice(0, 160) || null }); } refs.push(n); } return refs; };
+  const ev = (arr, k = 3) => (arr || []).slice(0, k).map(s => ({ title: s.title, url: s.url, source: s.source, refs: cite([s], 1) }));
+  const claim = (text, refs, kind) => ({ text, refs: [...new Set(refs || [])], kind });
   const K = { tech: [...by('code'), ...by('research')], product: [...by('product'), ...by('supply')], demand: [...by('demand'), ...by('community'), ...by('social')], funding: by('funding'), jobs: by('jobs'), news: by('news'), policy: by('policy') };
   const supplyN = K.product.length + fundings.length + formD.length, demandN = K.demand.length + pains.length;
   const eng = sigs.reduce((a, s) => a + Math.log(1 + Math.max(0, s.engagement || 0)), 0);
@@ -223,10 +227,25 @@ function buildOpp(c, G, df, N, now, cfg, ctx) {
   const top = whyNow[0];
   const who = model === 'consumer' ? '移动端个人用户' : model === 'gov' ? '政府与公共机构采购方' : industry ? `${IND[industry].cn}领域的企业与从业者` : '相关领域的中小企业';
   const statement = { who, pain: pains[0] ? `用户抱怨/求替代：「${pains[0].title.slice(0, 80)}」等 ${pains.length} 条` : `「${theme}」相关需求在 ${sources.length} 个来源同时出现，但现有方案分散`, whyNow: top ? `${top.name}：${top.why}（${top.n} 条证据）` : '证据不足', how: model === 'b2b_saas' ? '以垂直 SaaS 切入，先做单一高频场景，按席位/用量订阅' : model === 'consumer' ? '做轻量 App，免费增值，以差评中的痛点作为差异化卖点' : model === 'hardware' ? '硬件 + 订阅服务，先做 B2B 小批量试点' : model === 'gov' ? '项目制交付，同时沉淀标准化产品' : '撮合平台，先做供给侧，再按交易抽佣', evidence: ev(pains.length ? pains : sigs) };
+
+  // 主张 → 证据映射：机会陈述 / Why Now / 不对称 各自挂编号引文（借鉴 AlphaSense [[N • Source]]）
+  const drvLists = { '技术成熟': K.tech, '需求上升': [...K.demand, ...pains], '资本涌入': [...K.funding], '人才聚集': K.jobs, '政策窗口': sigs.filter(s => s.kind === 'policy') };
+  whyNow.forEach(w => { w.refs = cite(drvLists[w.name] || [], 4); });
+  asymmetry.forEach(a => { a.refs = cite(sigs.slice(0, 3), 2); });
+  const painRefs = cite(pains.length ? pains : sigs.filter(s => s.pain || s.kind === 'demand' || s.kind === 'community'), 3);
+  const claims = [
+    claim(statement.who, cite(sigs.filter(s => s.kind === 'jobs' || s.kind === 'product').concat(sigs).slice(0, 3), 2), 'who'),
+    claim(statement.pain, painRefs, 'pain'),
+    claim(statement.whyNow, top ? (whyNow.find(w => w.name === top.name)?.refs || []) : [], 'whyNow'),
+    claim(statement.how, cite(sigs.filter(s => s.kind === 'product' || s.kind === 'code').concat(fundings), 2), 'how'),
+    ...whyNow.map(w => claim(`${w.name}：${w.why}（${w.n}）`, w.refs, 'driver')),
+    ...asymmetry.slice(0, 4).map(a => claim(a.desc || a.type, a.refs, 'asym')),
+  ];
+  statement.refs = { who: claims[0].refs, pain: claims[1].refs, whyNow: claims[2].refs, how: claims[3].refs };
   const id = 'o_' + require('crypto').createHash('md5').update(terms.slice(0, 4).sort().join('|') || rep.title).digest('hex').slice(0, 12);
   const o = { id, members: sigs.map(s => s.id), theme, title: theme, rep: { title: rep.title, url: rep.url }, terms, industry, industryName: industry ? IND[industry].cn : (indTop.length ? '跨行业' : '未分类'), industryConf: +topShare.toFixed(2), sector: industry ? IND[industry].sectorCn : '—', industries: indTop.slice(0, 3).map(([k, v]) => ({ code: k, name: IND[k].cn, w: +v.toFixed(1) })),
     total, conf: oc, dims: Object.fromEntries(Object.entries(D).map(([k, v]) => [k, v.score])), dimDetail: D, ts, seasonal, metrics: { crossSource: clamp(sources.length * 12 + Object.keys(K).filter(k => K[k].length).length * 6), novelty: clamp(100 - (now - Math.min(...sigs.map(s => s.ts))) / 86400 * 3), signals: sigs.length, pain: pains.length, money, supplyN, demandN, last3: sigs.filter(s => s.ts > now - 3 * 86400).length, prev: sigs.filter(s => s.ts <= now - 3 * 86400 && s.ts > now - 10 * 86400).length, growthRatio: +(ts.w2 ? ts.w1 / ts.w2 : ts.w1 ? 2 : 1).toFixed(2) },
-    sources, kinds: Object.fromEntries([...new Set(sigs.map(s => s.kind))].map(k => [k, n(k)])), evidence: sigs.slice(0, 60).map(s => ({ id: s.id, title: s.title, url: s.url, source: s.source, kind: s.kind, ts: s.ts, engagement: s.engagement, region: s.region })),
+    sources, kinds: Object.fromEntries([...new Set(sigs.map(s => s.kind))].map(k => [k, n(k)])), evidence: (cite(sigs, 60), pool), claims,
     fundings, asymmetry, asymMetrics: A, competitors, whyNow, model, unitEcon: UE, moat, risks, statement, updated: now };
   Object.assign(o, ruleAnalysis(o));
   return o;

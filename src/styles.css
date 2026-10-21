@@ -69,3 +69,7 @@ kbd{background:var(--line);border:1px solid var(--line2);border-radius:3px;paddi
 .ic{display:inline-block;vertical-align:-0.15em;flex:none}
 .seg{display:inline-flex;gap:2px}.grid.g4{grid-template-columns:repeat(4,1fr)}
 .kanban .col.over{outline:2px dashed var(--ac);outline-offset:-2px}
+
+/* v3.2 编号引文 */
+.cites{display:inline;white-space:nowrap}.cite{display:inline-block;margin:0 1px;padding:0 4px;border-radius:3px;background:var(--c1);color:#fff;font-size:10px;font-weight:600;text-decoration:none;line-height:1.6;vertical-align:1px}.cite:hover{filter:brightness(1.15)}
+tr.flash,tr.flash td{animation:evflash 1.2s ease}@keyframes evflash{0%{background:rgba(59,130,246,.35)}100%{background:transparent}}

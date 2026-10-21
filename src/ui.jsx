@@ -16,7 +16,9 @@ export const Src = ({ s }) => <span className="tag n">{s}</span>;
 export const L = ({ u, children }) => <a className="l" onClick={e => { e.stopPropagation(); api.call('open:url', u); }} title={u}>{children}</a>;
 export const Bar = ({ v }) => <div className="bar"><i style={{ width: Math.max(2, Math.min(100, v)) + '%' }} /></div>;
 export const Conf = ({ v }) => <span className={'tag ' + (v >= .6 ? 'g' : v >= .35 ? 'o' : 'r')}>置信度 {v >= .6 ? '高' : v >= .35 ? '中' : '低'} {v}</span>;
-export const Ev = ({ list }) => list?.length ? <div className="basis">{list.map((e, i) => <div key={i}><I n="links-line" /> <Src s={e.source} /><L u={e.url}>{String(e.title).slice(0, 110)}</L></div>)}</div> : null;
+export const Ev = ({ list }) => list?.length ? <div className="basis">{list.map((e, i) => <div key={i}><I n="links-line" /> <Src s={e.source} /><L u={e.url}>{String(e.title).slice(0, 110)}</L>{e.refs?.length ? <Cite refs={e.refs} /> : null}</div>)}</div> : null;
+// v3.2 编号引文：点击滚动到证据链对应行（借鉴 AlphaSense [[N • Source]] / LlamaIndex Source N）
+export const Cite = ({ refs }) => refs?.length ? <span className="cites">{[...new Set(refs)].map(n => <a key={n} className="cite" href={'#ev-' + n} onClick={e => { e.preventDefault(); const el = document.getElementById('ev-' + n); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1200); } }} title={'证据 #' + n}>[{n}]</a>)}</span> : null;
 export const PH = ({ icon, title, sub, children }) => <div className="ph"><div><h1><I n={icon} s={19} />{title}</h1>{sub && <div className="sub">{sub}</div>}</div><span className="sp" />{children}</div>;
 // 图表颜色走设计令牌：option 里写 'var(--x)'，渲染前按当前主题解析为实际颜色；主题切换时重建实例
 const cssVar = s => typeof s === 'string' && localStorage.getItem('lang') === 'en' && EXACT[s] ? EXACT[s] : typeof s === 'string' && s.startsWith('var(') ? getComputedStyle(document.documentElement).getPropertyValue(s.slice(4, -1).split(',')[0].trim()).trim() || s : s;

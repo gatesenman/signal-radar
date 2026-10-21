@@ -326,3 +326,33 @@
 | v3.1 | ~86% | 体检分 6/10 | 23/23（修测试后） | 1.38/1.47s | 36.7s | 175.04MB |
 
 Windows 包：`release/SignalRadar-Setup-3.1.0-x64.exe`（175,044,272 B）。分片在 `release/small-3.1/`：part00–part08（8×20MB + 7.27MB）、join.bat、SHA256SUMS.txt。SHA256 为 b2a407bb…9ec3e9，本机合并校验一致。本轮 **未做 Wine 冒烟测试**（v2.2 已验证过图标与启动，本轮未改打包配置）。
+
+---
+# 自进化 v3.2 → v3.7
+
+## v3.2：证据链与可解释性（深挖：出处追溯）
+**1. 行业竞品学习**
+- **AlphaSense**：生成式回答里用 `[[N • Source]]` 内联引文，URL 带 `docid` / `page` / `stmt` / `hl`，一点就跳到原文页和精确语句；Smart Summaries / Generative Grid 每条结论都挂出处，找不到证据时明确说"没有"而不是瞎编。
+  来源：https://developer.alpha-sense.com/agent-api/response-parsing 、https://help.alpha-sense.com/hc/en-us/articles/41669307479443-Get-Instant-Insights-and-Save-Time-with-Smart-Summaries 、https://help.alpha-sense.com/hc/en-us/articles/41680141048979-Leveraging-Generative-Grid
+
+**2. 开源产品分析**
+- **LlamaIndex CitationQueryEngine**（MIT）：把检索到的节点切成可引用的 chunk，编号为 `Source N`，提示词要求回答时用 `[N]` 引用；`citation_chunk_size` 控制粒度。
+  来源：https://developers.llamaindex.ai/python/examples/workflow/citation_query_engine/ 、https://github.com/run-llama/llama_index/blob/main/llama-index-core/llama_index/core/query_engine/citation_query_engine.py
+- **Haystack AnswerBuilder**：用 `reference_pattern` 从回答里抽出 `[n]`，再映射回文档；chunk 过多时用 MetaFieldGroupingRanker 按文件/页归并。
+  来源：https://github.com/deepset-ai/haystack/discussions/8286
+- 许可证：只借编号引文和"主张 ↔ 出处"的交互，在 JS 里自写，不引入 Python 依赖。
+
+**3. 反思**
+
+| 差距 | 影响 | 成本 | 决策 |
+|---|---|---|---|
+| 机会陈述 / Why Now / 不对称只有文字，点不开对应证据 | 高 | 低 | ✅ |
+| 证据链是平铺列表，没有摘要片段，也没有和主张的对应关系 | 高 | 低 | ✅ |
+| 评分依据的 basis 行没有挂编号 | 中 | 低 | 部分（Ev 组件已显示 refs） |
+| 深度到 PDF 页码 / 句子级（AlphaSense stmt） | 中 | 高（我们的信号大多是网页标题，没有页结构） | 否，用 snippet 代替 |
+
+**4. 实现**
+- `engine.js`：全局编号引文池；`cite()` / `claim()`；机会对象增加 `claims[]`（who / pain / whyNow / how / driver / asym）和带 `n`、`snippet` 的 `evidence[]`；`statement.refs` 挂各字段的编号。
+- UI：`Cite` 组件渲染可点击的 `[n]`，滚动并高亮对应证据行；证据页签顶部增加「主张 ↔ 证据」面板；概览和标准报告的机会陈述旁显示引文。
+- 截图：`shots/v32-detail-evidence.png`（主张旁有蓝色编号，证据表有 [n] 和摘要）。
+- 指标：合理率不变约 86%；E2E **23/23**；启动 1.32s / 2.02s；采集 29.9s（HN）。
