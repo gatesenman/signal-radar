@@ -52,7 +52,23 @@
         "!node_modules/onnxruntime-node/bin/napi-v*/win32/**",
         "!node_modules/onnxruntime-node/bin/napi-v*/darwin/**",
         "!node_modules/@img/sharp-win32*/**",
-        "!**/*cuda*"
+        "!**/*cuda*",
+        "!node_modules/remixicon/**",
+        "!node_modules/onnxruntime-web/lib/**",
+        "!node_modules/onnxruntime-web/node_modules/**",
+        "!node_modules/onnxruntime-web/dist/!(ort.webgpu.bundle.min.mjs)",
+        "!node_modules/@huggingface/transformers/dist/transformers.web*",
+        "!node_modules/@huggingface/transformers/dist/transformers.js",
+        "!node_modules/@huggingface/transformers/dist/transformers.min.js",
+        "!node_modules/@huggingface/transformers/src/**",
+        "!node_modules/sql.js/dist/*asm*",
+        "!node_modules/sql.js/dist/*.zip",
+        "!node_modules/sql.js/dist/*debug*",
+        "!node_modules/sql.js/dist/*inline*",
+        "!node_modules/sql.js/dist/worker*",
+        "!node_modules/sql.js/dist/*browser*",
+        "!**/*.map",
+        "!**/*.d.ts"
       ]
     },
     "win": {
@@ -77,7 +93,24 @@
         "!node_modules/@img/sharp-linux*/**",
         "!node_modules/@img/sharp-libvips-linux*/**",
         "!**/*cuda*",
-        "!**/*tensorrt*"
+        "!**/*tensorrt*",
+        "!node_modules/onnxruntime-node/bin/napi-v*/win32/arm64/**",
+        "!node_modules/remixicon/**",
+        "!node_modules/onnxruntime-web/lib/**",
+        "!node_modules/onnxruntime-web/node_modules/**",
+        "!node_modules/onnxruntime-web/dist/!(ort.webgpu.bundle.min.mjs)",
+        "!node_modules/@huggingface/transformers/dist/transformers.web*",
+        "!node_modules/@huggingface/transformers/dist/transformers.js",
+        "!node_modules/@huggingface/transformers/dist/transformers.min.js",
+        "!node_modules/@huggingface/transformers/src/**",
+        "!node_modules/sql.js/dist/*asm*",
+        "!node_modules/sql.js/dist/*.zip",
+        "!node_modules/sql.js/dist/*debug*",
+        "!node_modules/sql.js/dist/*inline*",
+        "!node_modules/sql.js/dist/worker*",
+        "!node_modules/sql.js/dist/*browser*",
+        "!**/*.map",
+        "!**/*.d.ts"
       ]
     },
     "mac": {
