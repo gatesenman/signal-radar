@@ -31,7 +31,7 @@ export function Radar({ opps, open, refresh, busy, oppCtx, inds = [], upd }) {
     <div className="card"><DataTable name="radar" rows={rows} onRow={r => open(r.id)} cols={[
       { k: 'total', n: '评分', w: 60, r: r => <span className="score" title={r.dimBoost ? `含多维加权 +${r.dimBoost}` : ''}>{r.total}</span> }, { k: 'conf', n: '置信', w: 70, r: r => <Conf v={r.conf} /> },
       { k: 'title', n: '机会', r: r => <><b>{r.title}</b>{r.quality?.noise && <span className="tag">背景簇</span>}<div className="row" style={{ gap: 4, flexWrap: 'wrap', marginTop: 2 }}>{(r.dimHits || []).map(d => <span key={d} className="tag o" style={{ fontSize: 10 }}>{DN[d] || d}</span>)}</div></> },
-      { k: 'industryName', n: '行业', w: 130 }, { k: 'n', n: '信号', w: 60, v: r => r.n ?? r.signals?.length ?? r.count }, { k: 'dimHits', n: '维度数', w: 60, v: r => (r.dimHits || []).length },
+      { k: 'industryName', n: '行业', w: 130 }, { k: 'n', n: '信号', w: 60, v: r => r.metrics?.signals ?? '' }, { k: 'dimHits', n: '维度数', w: 60, v: r => (r.dimHits || []).length },
       { k: 'asym', n: '不对称', w: 60, v: r => r.asymmetry?.length || 0 }, { k: 'stage', n: '阶段', w: 60, v: r => SN[r.stage] || r.stage }]}
       batch={[['star-line', '加入观察', ids => ids.forEach(id => upd(id, { watched: true }))], ['filter-3-line', '移到初筛', ids => ids.forEach(id => upd(id, { stage: 'screen' }))], ['close-circle-line', '放弃', ids => ids.forEach(id => upd(id, { stage: 'drop' }))]]} /></div></>;
 }
