@@ -168,6 +168,11 @@ add('ccnews', { name: 'Common Crawl CC-NEWS（WARC 流式解析）', cat: '宏�
 add('cc_cdx', { name: 'Common Crawl CDX 索引（域名/页面增长）', cat: '供给', kind: 'supply', weight: .7, freq: 10080 }, (kw, cfg, ctx) => CC.cdx(cfg, ctx));
 
 // ===== 需要 Key =====
+// v3.1 RSSHub（AGPL-3.0）：只作为客户端访问用户自建的实例，本应用不包含 RSSHub 代码；公共实例 rsshub.app 对阅读器返回 403（2026-10 实测），因此需要填写自建地址
+add('rsshub', { name: 'RSSHub 中文源（需自建实例：36氪快讯 / 虎嗅 / 少数派…）', cat: '中文', kind: 'news', weight: .55, freq: 120, region: 'cn', key: 'rsshubBase' }, async (kw, cfg) => { const out = [], base = String(cfg.rsshubBase || '').replace(/\/$/, '');
+  const routes = String(cfg.rsshubRoutes || '/36kr/newsflashes,/huxiu/article,/sspai/index,/woshipm/popular').split(',').map(s => s.trim()).filter(Boolean);
+  for (const r of routes) { const d = await get(`${base}${r}${r.includes('?') ? '&' : '?'}format=json`).catch(() => null); for (const x of d?.items || []) if (x.title && x.url) out.push({ kind: 'news', region: 'cn', title: `${d.title ? d.title.replace(/ - .*$/, '').slice(0, 12) + '｜' : ''}${x.title}`.slice(0, 300), url: x.url, text: strip(x.content_html || x.summary || '').slice(0, 400), ts: Math.floor(new Date(x.date_published || Date.now()).getTime() / 1000), engagement: 0 }); await sleep(300); }
+  return out; });
 add('x', { name: 'X / Twitter 近期搜索', cat: '需求', kind: 'social', weight: .5, freq: 180, key: 'xBearer' }, async (kw, cfg) => { const out = [];
   for (const k of (kw.length ? kw : ['startup']).slice(0, 3)) { const d = await get(`https://api.x.com/2/tweets/search/recent?query=${encodeURIComponent(k + ' -is:retweet lang:en')}&max_results=50&tweet.fields=created_at,public_metrics`, { headers: { Authorization: `Bearer ${cfg.xBearer}` } });
     for (const t of d.data || []) out.push({ kind: 'social', title: t.text.slice(0, 200), url: `https://x.com/i/status/${t.id}`, text: '', ts: tsOf(t.created_at), engagement: Object.values(t.public_metrics || {}).reduce((a, b) => a + b, 0) }); }

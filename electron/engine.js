@@ -45,6 +45,7 @@ function cluster(signals, cfg = {}, ctx = {}) {
   const keep = C.filter(c => { const src = new Set(c.m.map(s => s.source)); return (c.m.length >= 4 && src.size >= 2) || c.m.length >= 10; });
   const opps = keep.map(c => buildOpp(c, G, df, pool.length, now, cfg, ctx)).filter(Boolean);
   for (const o of opps) qualityGate(o);
+  mosaic(opps);
   opps.sort((a, b) => b.total - a.total);
   return { opps: opps.slice(0, +cfg.maxThemes || 120), baseline: G, clusters: C.length, pool: pool.length };
 }
@@ -124,6 +125,16 @@ function topicTerms(sigs, df, N) {
   const extend = w => { if (!/^[\u4e00-\u9fa5]+$/.test(w)) return w; for (let k = 0; k < 6 && w.length < 8; k++) { const L = {}, R = {}; let n = 0; for (const tt of titles) { let i = tt.indexOf(w); while (i >= 0) { n++; const l = tt[i - 1], r = tt[i + w.length]; if (l && /[\u4e00-\u9fa5]/.test(l)) L[l] = (L[l] || 0) + 1; if (r && /[\u4e00-\u9fa5]/.test(r)) R[r] = (R[r] || 0) + 1; i = tt.indexOf(w, i + 1); } } if (n < 2) break; const bl = Object.entries(L).sort((a, b) => b[1] - a[1])[0], br = Object.entries(R).sort((a, b) => b[1] - a[1])[0]; if (br && br[1] >= .8 * n) w = w + br[0]; else if (bl && bl[1] >= .8 * n) w = bl[0] + w; else break; } return w; };
   const res = []; for (const c of out) { const w = extend(c.w); if (!res.some(r => r.includes(w) || w.includes(r))) res.push(w); }
   return res;
+}
+// v3.1 机会体检分（借鉴 CB Insights Mosaic 的 Momentum / Market / Money / Management 四要素与 0–1000 刻度，Crunchbase Growth Score 的"自身与同类比较"）
+// 我们的口径（权重为本应用的假设，非 CB Insights 权重）：动能 40%（增长分 + 生命周期）、市场 25%（同行业其它簇的融资事件，衡量赛道资金热度）、
+// 资金 25%（本簇融资事件数与披露金额）、人才 10%（招聘信号）。各要素先在当前所有簇中做百分位，再加权 ×10 → 0–1000。
+function mosaic(opps) {
+  const indF = {}; for (const o of opps) if (o.industry) indF[o.industry] = (indF[o.industry] || 0) + (o.fundings || []).length;
+  const raw = opps.map(o => { const L = o.ts?.life, f = o.fundings || []; return { momentum: (o.dims?.growth || 0) + (L && !L.provisional ? (L.stage === 'exploding' ? 10 : L.stage === 'peaked' || L.stage === 'declining' ? -10 : 0) : 0), market: o.industry ? (indF[o.industry] || 0) - f.length : 0, money: f.length + Math.log10(1 + f.reduce((a, x) => a + (x.amountM || 0), 0)), talent: (o.kinds?.jobs || 0) }; });
+  const pct = k => { const v = raw.map(r => r[k]), s = [...v].sort((a, b) => a - b); return v.map(x => s.length > 1 ? (s.filter(y => y < x).length + s.filter(y => y === x).length / 2) / s.length * 100 : 50); };
+  const P = { momentum: pct('momentum'), market: pct('market'), money: pct('money'), talent: pct('talent') }, W = { momentum: .4, market: .25, money: .25, talent: .1 };
+  opps.forEach((o, i) => { const parts = Object.fromEntries(Object.keys(W).map(k => [k, Math.round(P[k][i])])); o.mosaic = { score: Math.round(Object.entries(W).reduce((a, [k, w]) => a + parts[k] * w, 0) * 10), parts, raw: raw[i], weights: W }; });
 }
 function buildOpp(c, G, df, N, now, cfg, ctx) {
   const sigs = c.m; sigs.sort((a, b) => b.ts - a.ts);

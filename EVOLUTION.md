@@ -272,3 +272,47 @@
   - 新的完整短语如「临床试验」「开源推理框架」「出口管制」「战略石油储备 · 原油库存」「机器人 · 破产 · 订单」。
   - 非噪声簇 50 → 51。维度命中数基本不变（资本 2 → 3）。
 - 指标：合理率约 86%（维度卡片不变；标签可读性在前 30 个中从约 73% 升到约 93%）；E2E **23/23**；启动 1.64s / 1.38s；采集 32.0s（HN）；包体积 —。
+
+## v3.1：机会体检分 + 中文源扩展通道（深挖侧重点：投资数据平台的公司 / 赛道评分与中文一级市场数据库）
+**1. 行业竞品学习**
+- **CB Insights Mosaic**：0–1000 分，由 Momentum（招聘、数字参与度、新闻与社交情绪、客户与合作、流量）、Market（行业融资、交易、情绪、招聘、退出）、Money（融资历史、烧钱代理指标、投资人质量）、Management（团队经历）四要素组成；当前权重为 Momentum 50%、Money 40%、Market 5%、Management 5%。
+  来源：https://www.cbinsights.com/mosaic-health/ 、https://www.cbinsights.com/mosaic-whitepaper/
+- **Crunchbase**：Growth Score（0–100）综合融资、人数、运营、市场份额等，近期权重更高，并且 **按公司自身历史做归一化**；Heat Score 衡量关注度与媒体覆盖；Growth / Heat Trend 是分数在一段时间内的变化。
+  来源：https://support.crunchbase.com/hc/en-us/articles/53295907409555-Technical-Overview-Crunchbase-Growth-Score 、https://support.crunchbase.com/hc/en-us/articles/39902159873043-What-is-a-Heat-Score
+- **Harmonic.ai / Specter**：以部门人数变化、招聘、网站 / App 流量、人才流动为核心信号，支持 90/180/360 天增长筛选，以及隐身创业者信号（从高信号雇主离职、"building something new"、新域名注册）。
+  来源：https://support.harmonic.ai/en/articles/6582373-advanced-search-filters 、https://harmonic.ai/blog/how-to-find-track-stealth-startup-founders 、https://www.tryspecter.com/signals/talent
+- **Dealroom Signal**：0–100 分，综合资料完整度、创始团队质量、员工增长、下一轮融资时点。**PitchBook VC Exit Predictor**：对至少两轮融资的公司用机器学习预测 IPO / 并购 / 不退出的概率，并给出 Opportunity Score 百分位。**Tracxn**：偏赛道图谱，未见公开的综合评分。
+  来源：https://knowledge.dealroom.co/knowledge/dealroom-signal-1 、https://pitchbook.com/help/understanding-vc-exit-predictor 、https://brouky.tech/compare/vc-data-platforms
+- **IT桔子 / 企名片 / 鲸准**：一级市场投融资数据库，核心是公司、融资事件、机构、赛道标签、行业图谱和榜单；未见公开的"创业公司综合评分"。
+  来源：https://static.itjuzi.com/itjuzi-user-document-2.5.pdf 、https://pro.qimingpian.cn/ 、https://www.jingdata.com/dataService/
+
+**2. 开源产品分析**
+- **RSSHub**（AGPL-3.0）：提供 36氪 `/36kr/newsflashes`、`/36kr/hot-list`、虎嗅等中文路由，支持 `?format=json` 输出 JSON Feed。实测公共实例 rsshub.app 对阅读器返回 **403**（提示仅供测试、建议自建）。
+  - 合规做法：本应用 **只作为 HTTP 客户端** 访问用户自建的实例，不打包、不修改 RSSHub 代码，因此不触发 AGPL 的分发义务。
+  来源：https://github.com/DIYgod/RSSHub 、https://docs.rsshub.app/zh/routes/
+- **Huginn**（MIT）、**changedetection.io**（Apache-2.0）：事件代理 / 网页变更监控。思路可借鉴（"源 → 事件 → 规则 → 通知"，我们的提醒规则已经是这个结构），本轮不引入。
+- **n8n / Miniflux / OpenBB / Superset / Metabase / GDELT**：本轮未深挖。如实记录：时间有限，留作下一轮。
+
+**3. 反思**
+
+| 差距 / 错误假设 | 影响 | 成本 | 决策 |
+|---|---|---|---|
+| 只有"VC 六维"这一个主观加权分，没有像 Mosaic 那样按"动能 / 市场 / 资金 / 人才"拆开、并在同类中取百分位的体检分 | 高 | 低 | ✅ |
+| 中文资讯源受限（知乎 401、公共 RSSHub 403） | 中 | 低 | ✅ 增加自建 RSSHub 接入通道（默认关闭，需填写地址） |
+| **错误假设**：每个机会簇里都有招聘信号。实测招聘信号大多单独成簇，簇内 jobs 基本为 0，人才要素区分度很低 | 中 | 中 | 记录；下一轮改为按行业 / 关键词关联招聘 |
+| 隐身创业者 / 人才流动信号（Harmonic / Specter） | 高 | 高（需要 LinkedIn 类数据，无合规公开源） | 否，如实标注 |
+| 分数的"自身历史归一化"与 Heat Trend（Crunchbase） | 中 | 中 | 部分已有（快照历史曲线），本轮不再扩展 |
+
+**4. 实现**
+- `engine.js` 新增 `mosaic()`，输出机会体检分（0–1000）：
+  - 动能 40%：增长分 + 正式的生命周期。
+  - 市场 25%：同行业其它簇的融资事件数。
+  - 资金 25%：本簇融资数 + log 金额。
+  - 人才 10%：招聘信号。
+  - 各要素先在所有簇中取百分位再加权；权重是本应用的假设，**不是** CB Insights 的权重，界面上已注明。
+  - 体检分只作为参考，**不改变综合分**。
+- UI：雷达表新增「体检分」列（悬停显示四要素百分位）；详情页「VC 六维评分」标题旁显示体检分徽标，悬停可看构成。
+- `collectors.js` 新增 `rsshub` 源：需填写 `rsshubBase`（自建地址），路由默认 36氪快讯 / 虎嗅 / 少数派 / 人人都是产品经理，可改 `rsshubRoutes`。用本地 JSON Feed 夹具验证解析通过。没有自建实例，所以 **没有接入真实数据**。
+- 抽检体检分前 10：合理 4（机器人订单与破产、Tenstorrent 芯片融资、电池储能、Kalshi），部分合理 4（e-bike、公募科技股、Tesla Roadster、SpaceX 并购），不合理 2（「利率 · 将退出 · 贷款」「房贷 · 怎么 · 银行」是资讯或问答，因为银行业融资多，市场要素被抬高）→ 6/10。与综合分的 Spearman 相关系数 0.49，说明它提供了不同视角，而不是重复。
+- E2E：首次 22/23。用例 07 断言"CSV 行数 >5"，但在用例 06 保存的"分数 ≥60"视图下，本次只有 3 行可见。这是 **测试依赖数据的缺陷**，不是功能缺陷（CSV 内容正确，并已包含新增的体检分 / 生命周期列）。断言改为"CSV 行数 ≥ 表格可见行数"后为 **23/23**。
+- 指标：合理率约 86%（维度卡片不变；体检分抽检 6/10，作为新增参考分单列）；E2E **23/23**；启动 1.38s / 1.47s；采集 36.7s（HN）；包体积见下。
