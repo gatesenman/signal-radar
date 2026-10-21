@@ -35,3 +35,38 @@ export function Research() {
         <h3 style={{ marginTop: 10 }}><span>ILOSTAT 就业（千人，最新年）</span></h3><table><tbody>{Object.entries(st.ilo).map(([k, v]) => <tr key={k}><td>{k}</td><td>{v._year}</td><td>{Math.round(v.ECO_SECTOR_TOTAL || 0).toLocaleString()}</td><td className="mut">工业 {Math.round(v.ECO_SECTOR_IND || 0).toLocaleString()} · 服务 {Math.round(v.ECO_SECTOR_SER || 0).toLocaleString()}</td></tr>)}</tbody></table>
         {st.iea && <div className="mut" style={{ fontSize: 11, marginTop: 6 }}>IEA 美国一次能源供应 {st.iea.year}：{st.iea.rows.slice(0, 6).map(r => r.product + ' ' + Math.round(r.v / 1000).toLocaleString() + 'k ' + r.unit).join(' · ')}</div>}</>}</div></div></>;
 }
+
+// v2.1 机会维度：15 个独立发现引擎 + 维度×行业热力矩阵
+export function Dims({ open }) {
+  const [d, setD] = useState(null), [dim, setDim] = useState('all'), [sec, setSec] = useState(null), [multi, setMulti] = useState(false), [err, setErr] = useState(null);
+  useEffect(() => { api.call('dims:get').then(setD).catch(e => setErr(e.message)); }, []);
+  if (err) return <><PH icon="stack-line" title="机会维度" /><div className="err"><I n="error-warning-line" /> 加载失败：{err}</div></>;
+  if (!d) return <><PH icon="stack-line" title="机会维度" /><div className="skel" style={{ height: 300 }} /></>;
+  if (!d.cards?.length) return <><PH icon="stack-line" title="机会维度" /><Empty text="还没有维度结果：完成一次「刷新数据」或「重新聚类」后，15 个维度引擎会自动运行。" /></>;
+  const secs = [...new Map(d.cards.map(c => [c.sector, c.sectorCn])).entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  const dl = d.dims, mx = Math.max(1, ...Object.values(d.matrix));
+  const data = []; dl.forEach(([id], y) => secs.forEach(([s], x) => { const v = d.matrix[id + '|' + s] || 0; data.push([x, y, v || '-']); }));
+  const opt = { tooltip: { formatter: p => `${dl[p.value[1]][1]} × ${secs[p.value[0]][1]}：${p.value[2] === '-' ? 0 : p.value[2]} 个机会` }, grid: { left: 150, right: 20, top: 10, bottom: 70 },
+    xAxis: { type: 'category', data: secs.map(s => s[1]), axisLabel: { rotate: 40, color: '#8b96aa', fontSize: 11 }, splitArea: { show: true } }, yAxis: { type: 'category', data: dl.map(x => x[1]), inverse: true, axisLabel: { color: '#8b96aa', fontSize: 11 } },
+    visualMap: { min: 0, max: mx, show: false, inRange: { color: ['#13223a', '#1d4ed8', '#22d3ee', '#fbbf24'] } }, series: [{ type: 'heatmap', data, label: { show: true, color: '#e6edf7', fontSize: 10 } }] };
+  const onCell = p => { setDim(dl[p.value[1]][0]); setSec(secs[p.value[0]][0]); };
+  const list = d.cards.filter(c => (dim === 'all' || c.dim === dim) && (!sec || c.sector === sec) && (!multi || c.multi > 1));
+  const DN = Object.fromEntries(dl.map(x => [x[0], x]));
+  return <><PH icon="stack-line" title="机会维度" sub={`15 个独立发现引擎 · ${d.cards.length} 张机会卡片 · ${Object.values(d.counts).filter(Boolean).length}/15 个维度有命中 · 多维命中 ${d.cards.filter(c => c.multi > 1).length} · 运行于 ${new Date(d.ts || d.at).toLocaleString('zh-CN')}`} />
+    <div className="filters"><button className={dim === 'all' ? '' : 's'} onClick={() => setDim('all')}>全部 {d.cards.length}</button>
+      {dl.map(([id, n, ic]) => <button key={id} className={dim === id ? '' : 's'} onClick={() => setDim(id)} title={n}><I n={ic} /> {n} <span className="mut">{d.counts[id] || 0}</span></button>)}
+      <label className="chip"><input type="checkbox" checked={multi} onChange={e => setMulti(e.target.checked)} /> 仅多维命中</label>
+      {sec && <button className="s" onClick={() => setSec(null)}><I n="close-line" /> 行业：{secs.find(s => s[0] === sec)?.[1]}</button>}</div>
+    <div className="card"><h3><span><I n="grid-line" /> 维度 × 行业热力矩阵（点击格子筛选）</span></h3><Chart option={opt} h={460} onClick={onCell} /></div>
+    <div className="card" style={{ marginTop: 12 }}><h3><span><I n="list-check-2" /> 机会卡片（{list.length}）</span><span className="mut" style={{ fontSize: 11 }}>最终分 = 维度分 + 8×(命中维度数−1)</span></h3>
+      {!list.length ? <Empty text="该筛选下没有机会。" /> : list.slice(0, 120).map(c => <div key={c.id} className="kpi" style={{ marginBottom: 8 }}>
+        <div className="row" style={{ gap: 8, alignItems: 'center' }}><b style={{ fontSize: 18, width: 42 }}>{c.final}</b><div className="sp"><b>{c.title}</b>
+          <div className="mut" style={{ fontSize: 11 }}><I n={DN[c.dim]?.[2]} /> {c.dimName} · {c.industryName}{c.sub ? ' · ' + c.sub : ''}</div></div>
+          {c.dimsHit?.length > 1 && <span className="tag o" title="同一语义簇命中多个维度">多维 ×{c.multi}：{c.dimsHit.map(x => DN[x]?.[1]).join(' / ')}</span>}
+          {c.oppId && <button className="s" onClick={() => open(c.oppId)}><I n="arrow-right-up-line" /> 机会详情</button>}</div>
+        <div style={{ fontSize: 12, margin: '6px 0' }}>{c.why}</div>
+        <div className="row" style={{ flexWrap: 'wrap', gap: 6, fontSize: 11 }}>{Object.entries(c.metrics || {}).map(([k, v]) => <span key={k} className="tag"><span className="prov m" title="实测">●</span> {k}：{String(v)}</span>)}</div>
+        <div className="mut" style={{ fontSize: 11, marginTop: 4 }}><I n="ruler-line" /> 判定规则：{c.rule}</div>
+        <div style={{ fontSize: 11, marginTop: 4 }}>{c.evidence?.slice(0, 3).map((e, i) => <div key={i}><L u={e.url}>{e.title?.slice(0, 90)}</L> <span className="mut">{e.source}</span></div>)}</div>
+      </div>)}</div></>;
+}
