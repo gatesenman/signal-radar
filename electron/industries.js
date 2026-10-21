@@ -13,7 +13,7 @@ const L = [
 ['201010', 'Aerospace & Defense', '航空航天与国防', 'C', 'aerospace,defense,satellite,rocket,drone,space launch,missile,military,evtol,aircraft', '航天,航空,国防,卫星,火箭,无人机,低空经济,军工,商业航天'],
 ['201020', 'Building Products', '建筑产品', 'C', 'hvac,windows doors,insulation,heat pump,roofing,building products,plumbing', '暖通,门窗,保温,热泵,卫浴,建筑产品'],
 ['201030', 'Construction & Engineering', '建筑与工程', 'E', 'construction,contractor,engineering firm,infrastructure project,construction tech,builder,epc', '建筑,施工,工程总包,基建,装配式,智能建造'],
-['201040', 'Electrical Equipment', '电气设备', 'C', 'electrical equipment,battery,transformer,inverter,grid equipment,charger,ev charging,energy storage,electric motor', '电气设备,电池,储能,变压器,逆变器,充电桩,电机'],
+['201040', 'Electrical Equipment', '电气设备', 'C', 'electrical equipment,battery,power transformer,inverter,grid equipment,charger,ev charging,energy storage,electric motor', '电气设备,电池,储能,变压器,逆变器,充电桩,电机'],
 ['201050', 'Industrial Conglomerates', '工业集团', 'C', 'conglomerate,industrial group,siemens,honeywell,3m', '工业集团,多元化工业'],
 ['201060', 'Machinery', '机械', 'C', 'machinery,robot,robotics,industrial automation,cnc,excavator,humanoid,3d printing,factory automation,machine tool', '机械,机器人,人形机器人,工业自动化,数控,工程机械,机床,3D打印'],
 ['201070', 'Trading Companies & Distributors', '贸易公司与经销商', 'F', 'industrial distributor,wholesale,trading company,b2b marketplace,procurement', '贸易,批发,经销商,工业品采购,外贸'],

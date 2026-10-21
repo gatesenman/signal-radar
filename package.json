@@ -1,6 +1,6 @@
 {
   "name": "signal-radar",
-  "version": "2.7.0",
+  "version": "2.8.0",
   "description": "商机雷达 Signal Radar - AI 创业机会发现桌面应用",
   "main": "electron/main.js",
   "author": "GAOSICHUN",

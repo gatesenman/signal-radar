@@ -49,7 +49,7 @@ function cluster(signals, cfg = {}, ctx = {}) {
   return { opps: opps.slice(0, +cfg.maxThemes || 120), baseline: G, clusters: C.length, pool: pool.length };
 }
 // 质量闸门：识别「背景噪声簇」（公告/招聘/榜单模板、单一来源、标签空泛），降权而非删除，并给出原因
-const GENERIC = new Set('会见 华人 民共 路气 象预 时至 融资 亿元 完成 轮融 亿美 万元 大会 大赛 全球 学术 北京 上海 市人 智能 工业 扩容 能源 国科 电力 虎嗅 设计 渠道 深度 板块 公募 金融 targets 出海 国医 医院 生健 卫生 人民 政府 关于 新闻 新华 财经 网站 门户 公告 通知 举行 召开 方案 闻网 新浪 浪财 东方 方财 财富 搜狐 观点 时内 内新 最近 费榜 免费 付费 基热 次浏 热门 招聘 公开 民政 府采 采购 政策 季度 三季 深圳 创新 业大 局关 园招 services say andreessen horowitz jobs senior engineer gmbh manager notice agency collection activities finsmes labs events pro abgeschlossen hat financing germany spain czechia york mobile capital discover always doesn cialiste pilotage comptabilit artist 对月 月均 环比 周下 备案 form 差评'.split(' '));
+const GENERIC = new Set('提及 印发 通知 方案 施方 民政 关于 意见 实施 办法 公告 发布 会议 部署 工作 召开 会见 华人 民共 路气 象预 时至 融资 亿元 完成 轮融 亿美 万元 大会 大赛 全球 学术 北京 上海 市人 智能 工业 扩容 能源 国科 电力 虎嗅 设计 渠道 深度 板块 公募 金融 targets 出海 国医 医院 生健 卫生 人民 政府 关于 新闻 新华 财经 网站 门户 公告 通知 举行 召开 方案 闻网 新浪 浪财 东方 方财 财富 搜狐 观点 时内 内新 最近 费榜 免费 付费 基热 次浏 热门 招聘 公开 民政 府采 采购 政策 季度 三季 深圳 创新 业大 局关 园招 services say andreessen horowitz jobs senior engineer gmbh manager notice agency collection activities finsmes labs events pro abgeschlossen hat financing germany spain czechia york mobile capital discover always doesn cialiste pilotage comptabilit artist 对月 月均 环比 周下 备案 form 差评'.split(' '));
 function qualityGate(o) { const n = o.metrics.signals || 1, k = o.kinds || {}, why = [];
   const pol = (k.policy || 0) / n, job = (k.jobs || 0) / n, snap = (o.evidence || []).filter(e => SNAP.has(e.source)).length / Math.max(1, (o.evidence || []).length);
   if (pol > 0.6) why.push(`政策/招标公告占 ${Math.round(pol * 100)}%，更像行业背景而非创业机会`);
