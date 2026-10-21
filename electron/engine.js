@@ -49,7 +49,7 @@ function cluster(signals, cfg = {}, ctx = {}) {
   return { opps: opps.slice(0, +cfg.maxThemes || 120), baseline: G, clusters: C.length, pool: pool.length };
 }
 // 质量闸门：识别「背景噪声簇」（公告/招聘/榜单模板、单一来源、标签空泛），降权而非删除，并给出原因
-const GENERIC = new Set('人民 政府 关于 新闻 新华 财经 网站 门户 公告 通知 举行 召开 方案 闻网 新浪 浪财 东方 方财 财富 搜狐 观点 时内 内新 最近 费榜 免费 付费 基热 次浏 热门 招聘 公开 民政 府采 采购 政策 季度 三季 深圳 创新 业大 局关 园招 services say andreessen horowitz jobs senior engineer gmbh manager notice agency collection activities finsmes labs events pro abgeschlossen hat financing germany spain czechia york mobile capital discover always doesn cialiste pilotage comptabilit artist 对月 月均 环比 周下 备案 form 差评'.split(' '));
+const GENERIC = new Set('会见 华人 民共 路气 象预 时至 融资 亿元 完成 轮融 亿美 万元 大会 大赛 全球 学术 北京 上海 市人 智能 工业 扩容 能源 国科 电力 虎嗅 设计 渠道 深度 板块 公募 金融 targets 出海 国医 医院 生健 卫生 人民 政府 关于 新闻 新华 财经 网站 门户 公告 通知 举行 召开 方案 闻网 新浪 浪财 东方 方财 财富 搜狐 观点 时内 内新 最近 费榜 免费 付费 基热 次浏 热门 招聘 公开 民政 府采 采购 政策 季度 三季 深圳 创新 业大 局关 园招 services say andreessen horowitz jobs senior engineer gmbh manager notice agency collection activities finsmes labs events pro abgeschlossen hat financing germany spain czechia york mobile capital discover always doesn cialiste pilotage comptabilit artist 对月 月均 环比 周下 备案 form 差评'.split(' '));
 function qualityGate(o) { const n = o.metrics.signals || 1, k = o.kinds || {}, why = [];
   const pol = (k.policy || 0) / n, job = (k.jobs || 0) / n, snap = (o.evidence || []).filter(e => SNAP.has(e.source)).length / Math.max(1, (o.evidence || []).length);
   if (pol > 0.6) why.push(`政策/招标公告占 ${Math.round(pol * 100)}%，更像行业背景而非创业机会`);
@@ -90,7 +90,14 @@ function buildOpp(c, G, df, N, now, cfg, ctx) {
   const theme = terms.slice(0, 3).join(' · ') || rep.title.slice(0, 40);
   // 行业
   const iv = {}; for (const s of sigs) if (s.ind) iv[s.ind] = (iv[s.ind] || 0) + (s.weight || .5);
-  const indTop = Object.entries(iv).sort((a, b) => b[1] - a[1]); const industry = indTop[0]?.[0] || null;
+  // v2.3：行业判定 = 成员标签加权（50%）+ 簇内标题关键词投票（50%）；主行业占比不足或政策主导时标为跨行业，避免误标
+  const kv = {}; for (const s of sigs.slice(0, 120)) { const [c] = tagByKeywords(s.title); if (c) kv[c] = (kv[c] || 0) + 1; }
+  const sw = Object.values(iv).reduce((a, b) => a + b, 0) || 1, sk = Object.values(kv).reduce((a, b) => a + b, 0) || 1;
+  const comb = {}; for (const [k, v] of Object.entries(iv)) comb[k] = (comb[k] || 0) + .5 * v / sw; for (const [k, v] of Object.entries(kv)) comb[k] = (comb[k] || 0) + .5 * v / sk;
+  const indTop = Object.entries(comb).sort((a, b) => b[1] - a[1]).map(([k, v]) => [k, +(v * sw).toFixed(2)]);
+  const topShare = indTop.length ? comb[indTop[0][0]] : 0, polShare = sigs.filter(s => s.kind === 'policy').length / sigs.length;
+  const support = indTop.length ? sigs.filter(s => s.ind === indTop[0][0]).length + (kv[indTop[0][0]] || 0) : 0;
+  const industry = !indTop.length || topShare < .3 || support < Math.max(3, .2 * sigs.length) || (polShare > .4 && topShare < .5) ? null : indTop[0][0];
   const ts = series(sigs, G, now);
   const text = sigs.map(s => (s.title + ' ' + (s.text || '')).toLowerCase()).join(' ');
   const seasonal = SEASONAL.test(text) ? (text.match(SEASONAL) || [])[0] : null;
@@ -157,7 +164,7 @@ function buildOpp(c, G, df, N, now, cfg, ctx) {
   const who = model === 'consumer' ? '移动端个人用户' : model === 'gov' ? '政府与公共机构采购方' : industry ? `${IND[industry].cn}领域的企业与从业者` : '相关领域的中小企业';
   const statement = { who, pain: pains[0] ? `用户抱怨/求替代：「${pains[0].title.slice(0, 80)}」等 ${pains.length} 条` : `「${theme}」相关需求在 ${sources.length} 个来源同时出现，但现有方案分散`, whyNow: top ? `${top.name}：${top.why}（${top.n} 条证据）` : '证据不足', how: model === 'b2b_saas' ? '以垂直 SaaS 切入，先做单一高频场景，按席位/用量订阅' : model === 'consumer' ? '做轻量 App，免费增值，以差评中的痛点作为差异化卖点' : model === 'hardware' ? '硬件 + 订阅服务，先做 B2B 小批量试点' : model === 'gov' ? '项目制交付，同时沉淀标准化产品' : '撮合平台，先做供给侧，再按交易抽佣', evidence: ev(pains.length ? pains : sigs) };
   const id = 'o_' + require('crypto').createHash('md5').update(terms.slice(0, 4).sort().join('|') || rep.title).digest('hex').slice(0, 12);
-  const o = { id, members: sigs.map(s => s.id), theme, title: theme, rep: { title: rep.title, url: rep.url }, terms, industry, industryName: industry ? IND[industry].cn : '未分类', sector: industry ? IND[industry].sectorCn : '—', industries: indTop.slice(0, 3).map(([k, v]) => ({ code: k, name: IND[k].cn, w: +v.toFixed(1) })),
+  const o = { id, members: sigs.map(s => s.id), theme, title: theme, rep: { title: rep.title, url: rep.url }, terms, industry, industryName: industry ? IND[industry].cn : (indTop.length ? '跨行业' : '未分类'), industryConf: +topShare.toFixed(2), sector: industry ? IND[industry].sectorCn : '—', industries: indTop.slice(0, 3).map(([k, v]) => ({ code: k, name: IND[k].cn, w: +v.toFixed(1) })),
     total, conf: oc, dims: Object.fromEntries(Object.entries(D).map(([k, v]) => [k, v.score])), dimDetail: D, ts, seasonal, metrics: { crossSource: clamp(sources.length * 12 + Object.keys(K).filter(k => K[k].length).length * 6), novelty: clamp(100 - (now - Math.min(...sigs.map(s => s.ts))) / 86400 * 3), signals: sigs.length, pain: pains.length, money, supplyN, demandN, last3: sigs.filter(s => s.ts > now - 3 * 86400).length, prev: sigs.filter(s => s.ts <= now - 3 * 86400 && s.ts > now - 10 * 86400).length, growthRatio: +(ts.w2 ? ts.w1 / ts.w2 : ts.w1 ? 2 : 1).toFixed(2) },
     sources, kinds: Object.fromEntries([...new Set(sigs.map(s => s.kind))].map(k => [k, n(k)])), evidence: sigs.slice(0, 60).map(s => ({ id: s.id, title: s.title, url: s.url, source: s.source, kind: s.kind, ts: s.ts, engagement: s.engagement, region: s.region })),
     fundings, asymmetry, asymMetrics: A, competitors, whyNow, model, unitEcon: UE, moat, risks, statement, updated: now };

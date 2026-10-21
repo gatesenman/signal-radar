@@ -155,6 +155,11 @@ add('tmtpost', { name: '钛媒体', cat: '中文', kind: 'news', weight: .6, fre
 add('v2ex', { name: 'V2EX 热门', cat: '中文', kind: 'community', weight: .45, freq: 180, region: 'cn' }, async () => { const out = [];
   for (const u of ['https://www.v2ex.com/api/topics/hot.json', 'https://www.v2ex.com/api/topics/latest.json']) for (const t of await get(u)) out.push({ kind: 'community', region: 'cn', title: t.title, url: t.url, text: strip(t.content).slice(0, 300) + ' ' + (t.node?.title || ''), ts: t.created, engagement: t.replies });
   return out; });
+add('tousu_sina', { name: '黑猫投诉（新浪，消费者投诉公开列表）', cat: '中文', kind: 'demand', weight: .6, freq: 360, region: 'cn' }, async (kw, cfg) => { const out = [], pages = Math.max(1, Math.min(20, +cfg.tousuPages || 8));
+  for (let p = 1; p <= pages; p++) { const d = await get(`https://tousu.sina.com.cn/api/index/feed?type=1&page_size=10&page=${p}`); for (const x of d?.result?.data?.lists || []) { const m = x.main; if (!m?.title) continue;
+    out.push({ kind: 'demand', region: 'cn', title: `黑猫投诉｜${m.cotitle || '未知商家'}：${m.title}`, url: 'https:' + String(m.url || '').split('?')[0], text: `${strip(m.summary || '').slice(0, 400)} 诉求：${m.appeal || ''} 问题：${m.issue || ''}`, ts: +m.timestamp || Math.floor(Date.now() / 1000), engagement: (+m.upvote_amount || 0) + (+m.comment_amount || 0), company: m.cotitle, issue: m.issue, pain: true }); }
+    await sleep(400); }
+  return out; });
 add('cn_media', { name: '36氪 / 虎嗅 / IT桔子（官方 RSS 不可直连，经 Google News 站内检索）', cat: '中文', kind: 'news', weight: .6, freq: 360, region: 'cn' }, async () => multi(['site:36kr.com', 'site:huxiu.com', 'site:itjuzi.com', '36氪 融资', '完成 亿元 融资 A轮'].map(q => gnews(q, 'zh')), 'news', { region: 'cn' }));
 
 // ===== Common Crawl（单独模块）=====

@@ -45,7 +45,7 @@ const L = [
 ['351030', 'Health Care Technology', '医疗保健技术', 'I', 'health tech,ehr,electronic health record,healthcare ai,digital health,medical ai,clinical software', '医疗信息化,数字医疗,医疗AI,电子病历,智慧医院'],
 ['352010', 'Biotechnology', '生物科技', 'M', 'biotech,gene therapy,crispr,cell therapy,mrna,antibody,clinical trial,oncology,rare disease', '生物科技,基因治疗,细胞治疗,创新药,抗体,临床试验,合成生物'],
 ['352020', 'Pharmaceuticals', '制药', 'C', 'pharma,pharmaceutical,drug approval,glp-1,generic drug,fda approval,recall drug,vaccine', '制药,药品,仿制药,疫苗,GLP-1,减肥药,集采,中药'],
-['352030', 'Life Sciences Tools & Services', '生命科学工具与服务', 'M', 'life sciences,lab automation,sequencing,cro,cdmo,research tools,proteomics,genomics', '生命科学,测序,CRO,CDMO,实验室自动化,科研试剂'],
+['352030', 'Life Sciences Tools & Services', '生命科学工具与服务', 'M', 'life sciences,lab automation,dna sequencing,genome sequencing,cdmo,proteomics,genomics,contract research organization', '生命科学,测序,CRO,CDMO,实验室自动化,科研试剂'],
 ['401010', 'Banks', '银行', 'J', 'bank,banking,deposits,lender,community bank,neobank,loan', '银行,存款,贷款,数字银行'],
 ['402010', 'Financial Services', '金融服务', 'J', 'payments,fintech,stablecoin,crypto,payment processing,remittance,embedded finance,bnpl,wallet', '支付,金融科技,稳定币,加密货币,跨境支付,数字钱包'],
 ['402020', 'Consumer Finance', '消费金融', 'J', 'consumer lending,credit card,personal loan,buy now pay later,credit score', '消费金融,信用卡,消费贷,小额贷款,征信'],

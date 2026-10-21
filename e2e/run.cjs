@@ -5,10 +5,11 @@ const APP = path.resolve(__dirname, '..'), OUT = path.join(APP, 'e2e', 'out'), D
 fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(OUT, { recursive: true }); fs.rmSync(UD, { recursive: true, force: true });
 const initSql = require(path.join(APP, 'node_modules/sql.js'));
 const results = []; let app, page; const consoleErrors = [];
-async function launch() {
+const startups = [];
+async function launch() { const t0 = Date.now();
   app = await electron.launch({ args: [APP, '--no-sandbox', '--user-data-dir=' + UD], env: { ...process.env, SR_DB: DB, SR_ONLY: 'hn,arxiv' }, timeout: 60000 });
   page = await app.firstWindow(); page.on('console', m => m.type() === 'error' && consoleErrors.push(m.text())); page.on('pageerror', e => consoleErrors.push('pageerror: ' + e.message));
-  await page.waitForSelector('nav a', { timeout: 30000 });
+  await page.waitForSelector('nav a', { timeout: 30000 }); startups.push(Date.now() - t0);
   await app.evaluate(({ dialog, session }, out) => { let n = 0; const J = (a, b) => a + '/' + String(b).split(/[\\/]/).pop(); dialog.showSaveDialog = async (w, o) => ({ canceled: false, filePath: J(out, (o || w)?.defaultPath || 'file' + (++n)) });
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [global.__import || ''] }); session.defaultSession.on('will-download', (e, item) => item.setSavePath(J(out, item.getFilename()))); }, OUT);
 }
@@ -98,6 +99,6 @@ const waitFile = async (re, ms = 20000) => { const t0 = Date.now(); while (Date.
     expect(!(await page.locator('.onb').count()), '重启后又出现引导'); const o = await api('opps:list'); expect(watched.every(id => o.find(x => x.id === id)?.watched), '观察列表丢失');
     expect(o.some(x => x.stage === 'screen'), '阶段丢失'); await nav('机会雷达'); expect(await page.locator('.fbar .chip a', { hasText: '高分' }).count() === 1, '保存的视图丢失'); expect((await api('snap:list')).length >= 20, '快照丢失'); });
   await app.close();
-  const pass = results.filter(r => r.ok).length; fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ at: new Date().toISOString(), pass, total: results.length, results, consoleErrors: [...new Set(consoleErrors)].slice(0, 30) }, null, 1));
+  const pass = results.filter(r => r.ok).length; fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ at: new Date().toISOString(), pass, total: results.length, startupMs: startups, collectMs: results.find(r => r.name.startsWith('02'))?.ms, results, consoleErrors: [...new Set(consoleErrors)].slice(0, 30) }, null, 1));
   console.log(`\n${pass}/${results.length} passed`); process.exit(pass === results.length ? 0 : 1);
 })().catch(async e => { console.error('FATAL', e); try { await app?.close(); } catch {} process.exit(2); });
