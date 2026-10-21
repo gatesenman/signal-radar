@@ -73,7 +73,7 @@ async function refresh(opt = {}) {
   if (!getK('macro') || Date.now() - getK('macro').ts > 86400e3) await refreshMacro();
   if (!getK('chain') || Date.now() - getK('chain').ts > 7 * 86400e3) await refreshChain();
   if (!getK('istats') || Date.now() - getK('istats').ts > 7 * 86400e3) await refreshStats();
-  await recluster(); checkAlerts(); save(true); busy = false; send('refreshed', report); return report;
+  try { await recluster(); checkAlerts(); } catch (e) { log('重新聚类失败：' + (e.message || e)); } finally { busy = false; } save(true); send('refreshed', report); return report;
 }
 async function refreshChain() { try { const c = await CH.fetchChain(getCfg(), log); setK('chain', c); return c; } catch (e) { log('产业链失败：' + e.message); } }
 async function refreshStats() { try { const s = await CH.fetchStats(getCfg(), log); setK('istats', s); return s; } catch (e) { log('行业统计失败：' + e.message); } }
@@ -84,7 +84,7 @@ async function recluster() {
   const rows = all('SELECT id,source,kind,region,title,url,text,ts,engagement,weight,ind,meta,emb FROM signals WHERE ts > ? AND emb IS NOT NULL', [Math.floor(Date.now() / 1000) - 30 * 86400]);
   const sigs = rows.map(r => { const m = JSON.parse(r.meta || '{}'); const b = r.emb; return { ...r, ...m, industry: undefined, vec: new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4), emb: undefined, meta: undefined }; });
   const res = E.cluster(sigs, cfg); lastCluster = { clusters: res.clusters, pool: res.pool, ms: Date.now() - t0 };
-  run('DELETE FROM opps'); for (const o of res.opps) run('INSERT INTO opps VALUES(?,?,?,?)', [o.id, JSON.stringify(o), o.total, o.updated]);
+  run('DELETE FROM opps'); { const seen = new Map(); for (const o of res.opps) { const k = seen.get(o.id) || 0; seen.set(o.id, k + 1); if (k) o.id += '~' + k; } } for (const o of res.opps) run('INSERT OR REPLACE INTO opps VALUES(?,?,?,?)', [o.id, JSON.stringify(o), o.total, o.updated]);
   try { const all30 = all('SELECT id,source,kind,region,title,url,text,ts,engagement,weight,ind,meta FROM signals WHERE ts > ? OR source = ?', [Math.floor(Date.now() / 1000) - 60 * 86400, 'amazon_reviews']).map(r => ({ ...r, ...JSON.parse(r.meta || '{}'), meta: undefined }));
     const dr = DIMS.run({ signals: all30, opps: res.opps, chain: getK('chain'), macro: getK('macro') }); setK('dims', { ...dr, at: Date.now() }); lastDims = dr; log(`机会维度：${dr.cards.length} 张卡片，${Object.values(dr.counts).filter(Boolean).length}/${dr.dims.length} 个维度有命中`); } catch (e) { log('维度引擎失败：' + e.message, 'error'); }
   try { takeSnapshot({ opps: res.opps.map(o => ({ ...o, total: Math.min(100, o.total + 8 * Math.max(0, (lastDims?.oppDims?.[o.id]?.length || 1) - 1)) })), dims: lastDims }); } catch (e) { log('快照失败：' + e.message); }

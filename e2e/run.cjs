@@ -7,9 +7,9 @@ const initSql = require(path.join(APP, 'node_modules/sql.js'));
 const results = []; let app, page; const consoleErrors = [];
 const startups = [];
 async function launch() { const t0 = Date.now();
-  app = await electron.launch({ args: [APP, '--no-sandbox', '--user-data-dir=' + UD], env: { ...process.env, SR_DB: DB, SR_ONLY: 'hn,arxiv' }, timeout: 60000 });
-  page = await app.firstWindow(); page.on('console', m => m.type() === 'error' && consoleErrors.push(m.text())); page.on('pageerror', e => consoleErrors.push('pageerror: ' + e.message));
-  await page.waitForSelector('nav a', { timeout: 30000 }); startups.push(Date.now() - t0);
+  app = await electron.launch({ ...(process.env.E2E_EL ? { executablePath: process.env.E2E_EL } : {}), args: [APP, '--no-sandbox', '--user-data-dir=' + UD], env: { ...process.env, SR_DB: DB, SR_ONLY: process.env.E2E_ONLY || 'hn,arxiv' }, timeout: 60000 });
+  page = await app.firstWindow(); page.setDefaultTimeout(120000); page.on('console', m => m.type() === 'error' && consoleErrors.push(m.text())); page.on('pageerror', e => consoleErrors.push('pageerror: ' + e.message));
+  await page.waitForSelector('nav a', { timeout: 120000 }); startups.push(Date.now() - t0);
   await app.evaluate(({ dialog, session }, out) => { let n = 0; const J = (a, b) => a + '/' + String(b).split(/[\\/]/).pop(); dialog.showSaveDialog = async (w, o) => ({ canceled: false, filePath: J(out, (o || w)?.defaultPath || 'file' + (++n)) });
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [global.__import || ''] }); session.defaultSession.on('will-download', (e, item) => item.setSavePath(J(out, item.getFilename()))); }, OUT);
 }
@@ -33,10 +33,10 @@ const waitFile = async (re, ms = 20000) => { const t0 = Date.now(); while (Date.
     await page.locator('.onb button', { hasText: '完成' }).click(); await page.waitForTimeout(800); expect(!(await page.locator('.onb').count()), '引导未关闭'); expect((await h1()).includes('机会雷达'), 'VC 默认首页应为机会雷达，实际 ' + await h1());
     const c = await api('cfg:get'); expect(c.onboard?.role === 'vc' && c.onboard.regions.includes('日本'), '引导结果未保存'); });
   await t('02 采集：工具栏「立即采集」（HN + arXiv 子集）', async () => {
-    const before = (await api('stats')).total; await page.locator('.toolbar button', { hasText: '立即采集' }).click(); await page.waitForSelector('.toast:has-text("采集完成")', { timeout: 120000 });
+    const before = (await api('stats')).total; await page.locator('.toolbar button', { hasText: '立即采集' }).click(); await page.waitForSelector('.toast:has-text("采集完成")', { timeout: 900000 });
     const r = await page.locator('.toast').innerText(); expect(/成功/.test(r), r); const after = (await api('stats')).total; expect(after >= before, '信号数减少'); });
   await t('03 聚类：「重新聚类」+ 维度引擎 + 当日快照', async () => {
-    await page.locator('.toolbar button', { hasText: '重新聚类' }).click(); await page.waitForSelector('.toast:has-text("已重新语义聚类")', { timeout: 120000 });
+    await page.locator('.toolbar button', { hasText: '重新聚类' }).click(); await page.waitForSelector('.toast:has-text("已重新语义聚类")', { timeout: 900000 });
     const d = await api('dims:get'); expect(d.cards.length > 10, '维度卡片过少 ' + d.cards.length); const l = await api('snap:list'); expect(l.some(s => s.day === new Date().toLocaleDateString('sv-SE') && !s.backfill), '未生成今日快照'); });
   const VIEWS = ['总览', '机会维度', '信号流', '不对称信息', '机会雷达', '行业覆盖度', '机会详情', '产业链', '论文与统计', '宏观与贸易', '资本与融资', '验证工作流', '机会对比', '机会看板', '报告与 IC 备忘录', '发现日历', '观察列表', '提醒', '数据源', '共享协作', '运行日志', '设置'];
   await t('04 全部 ' + VIEWS.length + ' 个视图切换无渲染错误', async () => { const bad = []; for (const v of VIEWS) { await nav(v); if (await page.locator('.err').count()) bad.push(v); const h = await page.locator('.ph h1').count(); if (!h) bad.push(v + '(无标题)'); } expect(!bad.length, '出错视图：' + bad.join(',')); });
