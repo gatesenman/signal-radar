@@ -101,9 +101,18 @@ function merged(o, macro) { const w = ws(o.id); const l = w.llm || {}; const ch 
   return { ...o, ...l, dims, unitEcon: ue, statement: l.statement || o.statement, checklist: w.checklist || l.checklist || o.checklist, stage: w.stage || 'discover', notes: w.notes || '', watched: !!w.watched, ruleTotal: o.total, total: Math.round(o.total + delta), comments: w.comments || [], tam: E.tam({ ...o, unitEcon: ue }, macro, w.assump || {}), assump: w.assump || {}, chain: ch, asymmetry }; }
 function chainLink(o, chain) { const c = chainFor(o.industry, chain); if (!c) return null; const chokes = c.nodes.filter(n => n.choke);
   return { code: c.code, name: c.name, nodes: c.nodes, chokes: chokes.map(n => ({ node: n.stage + '·' + n.name, why: n.chokeWhy, growth: n.growth, url: n.url })) }; }
+// v4.1 个性化：Rocchio 式隐式反馈画像（观察/阶段推进为正，放弃为负），在行业与主题词上累积权重
+const STW = { screen: 1, research: 2, validate: 3, go: 4, drop: -2 };
+function personalize(list) { const byId = Object.fromEntries(list.map(o => [o.id, o])), P = {}; let nFb = 0;
+  for (const r of all('SELECT * FROM workspace')) { const w = JSON.parse(r.json), o = byId[r.opp_id] || w.snapshot; if (!o) continue; const wt = (w.watched ? 1 : 0) + (STW[w.stage] || 0); if (!wt) continue; nFb++;
+    const f = [...(o.industry ? ['ind:' + o.industry] : []), ...(o.terms || []).slice(0, 5).map(t => 't:' + String(t).toLowerCase())]; for (const k of f) P[k] = (P[k] || 0) + wt / (k.startsWith('ind:') ? 1 : 2); }
+  const on = nFb >= 3; for (const o of list) { if (!on) { o.personal = { on: false, n: nFb, score: o.total }; continue; }
+    const c = [...(o.industry ? [['ind:' + o.industry, P['ind:' + o.industry] || 0]] : []), ...(o.terms || []).slice(0, 5).map(t => ['t:' + String(t).toLowerCase(), P['t:' + String(t).toLowerCase()] || 0])].filter(x => x[1]);
+    const raw = c.reduce((a, x) => a + x[1], 0), adj = Math.round(8 * Math.tanh(raw / 6)); // 上限 ±8，避免信息茧房
+    o.personal = { on: true, n: nFb, adj, score: Math.max(0, Math.min(100, o.total + adj)), why: c.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 3).map(([k, v]) => (k.startsWith('ind:') ? '行业 ' + k.slice(4) : '主题词 ' + k.slice(2)) + (v > 0 ? ' +' : ' ') + v.toFixed(1)) }; } }
 function getOpps() { const DM = getK('dims')?.oppDims || {}; const macro = { ...(getK('macro') || {}), stats: getK('istats'), chainData: getK('chain') }; const ids = new Set(); const list = all('SELECT json FROM opps ORDER BY total DESC').map(r => { const o = JSON.parse(r.json); ids.add(o.id); const m = merged(o, macro); const dh = DM[o.id] || []; m.dimHits = dh; if (dh.length > 1) { m.dimBoost = 8 * (dh.length - 1); m.total = Math.min(100, m.total + m.dimBoost); } return m; }).sort((a, b) => b.total - a.total);
   for (const r of all('SELECT * FROM workspace')) { const w = JSON.parse(r.json); if (!ids.has(r.opp_id) && w.snapshot && ((w.stage && w.stage !== 'discover') || w.watched)) list.push({ ...merged(w.snapshot, macro), stale: true }); }
-  return list; }
+  personalize(list); return list; }
 function checkAlerts() {
   const opps = getOpps(), sigs = all('SELECT * FROM signals WHERE fetched > ?', [Math.floor(Date.now() / 1000) - 3600]);
   for (const a of all('SELECT * FROM alerts WHERE enabled=1')) { const hits = [];
