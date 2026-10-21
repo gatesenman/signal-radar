@@ -1,4 +1,4 @@
-import { React, useEffect, useState, api, I, D, KIND, CATC, STAGES, fmt, $M, Src, L, Bar, Conf, Ev, PH, Chart, radarOpt, grid, axl, Empty } from './ui.jsx';
+import { React, useEffect, useState, api, I, D, KIND, CATC, STAGES, fmt, $M, Src, L, Bar, Conf, Life, Ev, PH, Chart, radarOpt, grid, axl, Empty } from './ui.jsx';
 import { FilterBar, DataTable, applyF, F0 } from './shell21.jsx';
 export function Dash({ opps, stats, open, refresh, busy, oppCtx }) {
   const top = opps.filter(o => !o.quality?.noise).slice(0, 8), cats = (stats?.bySource || []).slice(0, 12).map(r => [r.source, r.n]), kinds = (stats?.byCat || []).map(r => [r.kind, r.n]), asym = opps.filter(o => o.asymmetry.length && !o.quality?.noise).slice(0, 6);
@@ -28,7 +28,7 @@ export function Radar({ opps, open, refresh, busy, oppCtx, inds = [], upd }) {
   return <><PH icon="radar-line" title="机会雷达" sub={`${opps.length} 个主题簇 · ${opps.filter(o => !o.quality?.noise).length} 个通过质量闸门 · 多维命中加权 +8/维 · 右键打开菜单`}><label className="row" style={{ fontSize: 12 }}><input type="checkbox" style={{ width: 14 }} checked={hideNoise} onChange={e => setHN(e.target.checked)} />隐藏背景/噪声簇</label></PH>
     <FilterBar f={f} setF={setF} sectors={sectors} dims={dims} />
     <div className="card"><DataTable name="radar" rows={rows} onRow={r => open(r.id)} cols={[
-      { k: 'total', n: '评分', w: 60, r: r => <span className="score" title={r.dimBoost ? `含多维加权 +${r.dimBoost}` : ''}>{r.total}</span> }, { k: 'conf', n: '置信', w: 70, r: r => <Conf v={r.conf} /> },
+      { k: 'total', n: '评分', w: 60, r: r => <span className="score" title={r.dimBoost ? `含多维加权 +${r.dimBoost}` : ''}>{r.total}</span> }, { k: 'conf', n: '置信', w: 70, r: r => <Conf v={r.conf} /> }, { k: 'life', n: '生命周期', w: 90, v: r => r.ts?.life?.stage || '', r: r => <Life l={r.ts?.life} /> },
       { k: 'title', n: '机会', r: r => <><b>{r.title}</b>{r.quality?.noise && <span className="tag">背景簇</span>}<div className="row" style={{ gap: 4, flexWrap: 'wrap', marginTop: 2 }}>{(r.dimHits || []).map(d => <span key={d} className="tag o" style={{ fontSize: 10 }}>{DN[d] || d}</span>)}</div></> },
       { k: 'industryName', n: '行业', w: 130 }, { k: 'n', n: '信号', w: 60, v: r => r.metrics?.signals ?? '' }, { k: 'dimHits', n: '维度数', w: 60, v: r => (r.dimHits || []).length },
       { k: 'asym', n: '不对称', w: 60, v: r => r.asymmetry?.length || 0 }, { k: 'stage', n: '阶段', w: 60, v: r => SN[r.stage] || r.stage }]}

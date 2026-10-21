@@ -33,3 +33,7 @@ export const radarOpt = (o, cmp) => ({ radar: { radius: '66%', indicator: Object
 export const grid = { left: 44, right: 16, top: 26, bottom: 26 }, axl = { lineStyle: { color: 'var(--heat0)' } };
 export const Empty = ({ refresh, busy, text }) => <div className="empty card"><I n="radar-line" />{text || '还没有数据。点击「立即采集」从 50+ 个公开来源拉取实时信号。'}<br /><br />{refresh && <button onClick={() => refresh()} disabled={busy}><I n="refresh-line" />立即采集</button>}</div>;
 export { logo, useEffect, useState, useMemo, React };
+
+// v2.9 生命周期徽标（爆发/稳定增长/已见顶/下滑/平稳；急升 = 短期快速变化）
+const LIFE = { exploding: ['爆发', 'g'], regular: ['稳定增长', 'p'], peaked: ['已见顶', 'o'], declining: ['下滑', 'r'], flat: ['平稳', ''] };
+export const Life = ({ l }) => l?.stage === 'young' || l?.stage === 'sparse' ? <span className="tag n" title={'有效采集 ' + (l.covered || 0) + ' 天，需 ≥7 天且 ≥6 条'}>{l.stage === 'young' ? '样本期不足' : '样本稀疏'}</span> : l ? <span className={'tag ' + (LIFE[l.stage]?.[1] || '')} title={`robust z=${l.z} · 斜率 ${l.slope} · 波动 ${l.vol}${l.cp ? ` · 变点 ${l.cp.day} 天` : ''}`}>{LIFE[l.stage]?.[0]}{l.pace === 'rapid' ? ' · 急升' : ''}{l.fad ? ' ⚠' : ''}{l.provisional ? '（初判）' : ''}</span> : null;

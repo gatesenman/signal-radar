@@ -181,3 +181,52 @@
 | v2.6 | ~85% | 23/23（同一构建） | — | — | — |
 | v2.7 | ~85% | 在 v2.8 复测 | — | — | — |
 | v2.8 | ~86% | 23/23 | 3.41/1.40s（高负载） | 163s（高负载） | 175.0MB |
+
+---
+# 自进化 v2.9 → v3.1（竞品学习 → 开源分析 → 反思 → 实现）
+
+## v2.9：趋势生命周期（深挖侧重点：趋势检测与"趋势 vs 一时热潮"）
+**1. 行业竞品学习**
+- **Exploding Topics**：把话题分为 Regular（强但不突出的增长）、Exploding（高于平均的增长）、Peaked（历史最高点已过）三类，并按 3/6/12/24/60…个月多个时间窗分别给出分类，外加 12 个月预测。机器学习初筛后再由分析师人工复核"是否商业相关、是否一时热潮"。
+  来源：https://explodingtopics.com/blog/how-to-spot-trends 、https://api.explodingtopics.com/docs.md 、https://explodingtopics.com/methodology
+- **Treendly**：pace 分为 Growth / Decline / Flat，type 分为 Sustained / Rapid / Seasonal；"Peaking" = 短期内增长 >25%；对每个趋势按 Pace、Volatility、Seasonal、Early Detection、Forecast、Volume 六维评分；用线性回归斜率判断方向。
+  来源：https://treendly.com/models 、https://treendly.com/tech 、https://treendly.com/tools/trend-checker
+- **Glimpse**：把 Google Trends 的 0–100 指数换算成绝对搜索量；核心原则是"持续增长，而不是一次病毒式尖峰"，以及"12 个月后还在增长才算趋势，两周消失只是噪声"。
+  来源：https://meetglimpse.com/software-guides/trend-forecasting/ 、https://meetglimpse.com/google-trends/search-volume/
+- **Gartner Hype Cycle**：五个阶段（技术萌芽 → 期望膨胀顶峰 → 幻灭低谷 → 复苏爬升 → 生产力平台）。学术评估指出它偏定性、可重复性有限（ScienceDirect 综述）。我们只借用"阶段"这个表达，不假装做定量预测。
+  来源：https://www.gartner.com/en/research/methodologies/gartner-hype-cycle 、https://www.sciencedirect.com/science/article/pii/S0040162516300270
+
+**2. 开源产品分析**
+- **STL robust 残差 z**：扣除季节项后，残差的 |z|>2.5 记为异常信号，|z|>3 记为确定异常；要求序列长度 ≥2×周期+1。
+  来源：https://github.com/antonbarr-data/dqt/blob/main/docs/algorithms/stl_residual_zscore.md
+- **Kats CUSUM**（MIT）：寻找单一变点，前后两段均值差最大的位置即为变点，再做似然比检验。
+  来源：https://github.com/facebookresearch/Kats/blob/main/kats/detectors/cusum_detection.py
+- **Prophet**（BSD）：适合做反事实基线，不擅长突变。
+- 许可证：以上项目我们 **只借鉴思路**，在 JS 里自写简化实现，没有引入或复制它们的代码，也没有引入 Python 依赖。
+
+**3. 反思（差距 / 错误假设）**
+
+| 差距 / 错误假设 | 影响 | 成本 | 决策 |
+|---|---|---|---|
+| 只有"速度 / 加速度 / 一次性热点"，没有生命周期阶段（爆发 / 稳定增长 / 见顶 / 下滑） | 高 | 低 | ✅ |
+| **错误假设**：28 天窗口都有数据。实际有效采集只有约 8 天，更早的日子全库信号极少；直接计算会把"刚开始采集"误判成"爆发"（第一版 49 个簇里 33 个被判为爆发） | 高 | 低 | ✅ 只用全库有足量采集的日子 |
+| **错误假设**：今天的数据是完整的。今天还没过完，计数偏低，会把趋势误判为下滑 | 中 | 低 | ✅ 剔除今天 |
+| 样本少于 2 周时做周内季节扣除会把序列抹平（每个星期几只有 1 个点） | 中 | 低 | ✅ ≥14 天才做 |
+| 没有区分"急升"与"持续"（Treendly 的 pace type） | 中 | 低 | ✅ |
+| 多窗口分类（3/6/12 月）、12 个月预测 | 中 | 高（历史不足，不能伪造） | 否 |
+
+**4. 实现**
+- `engine.js` 新增 `lifecycle()`：
+  - 周内季节扣除（≥14 天才做）。
+  - robust z（中位数 / MAD，设下限）。
+  - CUSUM 单变点。
+  - 线性斜率（相对变化）和波动率（CV）。
+  - 输出 stage（exploding / regular / peaked / declining / flat）、pace（rapid / sustained），以及疑似热潮标记 fad（急升且波动 >1.5）。
+- 有效窗口：只用全库当日信号 ≥ 近 7 天中位数 25% 的日子，并剔除今天：
+  - 有效天数 ≥14 → 正式分类，计入增长动能（爆发 +6，见顶 / 下滑 −8，疑似热潮 −8）。
+  - 7–13 天 → **初判**：显示但 **不计分**。
+  - 不足 7 天或少于 6 条 → 显示「样本期不足」或「样本稀疏」。
+- UI：雷达表新增「生命周期」列；详情页时间序列卡片显示徽标，悬停可看 z、斜率、波动、变点。英文词典同步补充。
+- 当前数据：有效采集 7 天，所以全部为初判，不影响分数。50 个非噪声簇中：爆发 7、下滑 8、见顶 4、样本期不足 30、疑似热潮 1。
+- 抽检有分类的前 10 个：合理 7（agent、kalshi、电池储能、tesla 见顶等），部分合理 2（Tenstorrent 融资新闻集中后回落），不合理 1（humanoid 的原始条数在上升，但占全库比例下降，被判为"下滑"）。这是"按占比归一化"口径带来的现象，已记录。
+- 指标：合理率约 86%（维度卡片不受影响；新增生命周期抽检 8/10，按"部分合理计 0.5"）；E2E **23/23**；启动 1.77s / 1.36s；采集 40.1s（HN）；包体积 —。

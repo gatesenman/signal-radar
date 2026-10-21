@@ -64,6 +64,31 @@ function baseline(sigs) { const g = { n: sigs.length, kind: {}, region: { cn: 0,
   return g; }
 const share = (n, d) => (n + 0.5) / (d + 1);
 
+// v2.9 生命周期分类（借鉴 Exploding Topics 的 exploding/regular/peaked、Treendly 的 pace×type、
+// STL 残差 robust z（周期 7 的周内季节项先扣除）与 Kats CUSUM 单变点思想；均为自写简化实现，无第三方代码）
+function lifecycle(rate) {
+  const n = rate.length, med = a => { const b = [...a].sort((x, y) => x - y); return b.length ? (b[b.length >> 1] + b[(b.length - 1) >> 1]) / 2 : 0; };
+  const dow = Array.from({ length: 7 }, (_, k) => med(rate.filter((_, i) => i % 7 === k))), overall = med(rate);
+  const adj = n >= 14 ? rate.map((v, i) => v - (dow[i % 7] - overall)) : [...rate]; // 扣除周内季节（≥2 周才做，否则每个星期几只有 1 个点）
+  const base = adj.slice(0, n >= 14 ? n - 7 : n - 3), m = med(base), avgA = adj.reduce((a, b) => a + b, 0) / n, mad = Math.max(med(base.map(x => Math.abs(x - m))) * 1.4826, .2 * avgA, .05);
+  const z = (adj.slice(-3).reduce((a, b) => a + b, 0) / 3 - m) / mad;
+  // CUSUM：找使前后均值差最大的单一变点
+  let best = { k: -1, d: 0 }; const tot = adj.reduce((a, b) => a + b, 0); let pre = 0;
+  for (let k = 3; k < n - 3; k++) { pre += adj[k - 1]; const d = (tot - pre) / (n - k) - pre / k; if (Math.abs(d) > Math.abs(best.d)) best = { k, d }; }
+  const x = adj.map((_, i) => i), xm = (n - 1) / 2, ym = tot / n; let sxy = 0, sxx = 0; adj.forEach((y, i) => { sxy += (i - xm) * (y - ym); sxx += (i - xm) ** 2; });
+  const slope = sxy / sxx, rel = ym ? slope * n / ym : 0; // 窗口内相对变化
+  const mean = ym, sd = Math.sqrt(adj.reduce((a, b) => a + (b - ym) ** 2, 0) / n), vol = mean ? sd / mean : 0;
+  const peakI = adj.indexOf(Math.max(...adj)), last7 = adj.slice(-7).reduce((a, b) => a + b, 0) / 7, peak = adj[peakI] || 0;
+  let stage, pace;
+  if (!tot) { stage = 'flat'; pace = 'flat'; }
+  else if (rel > .6 && (z > 2 || best.d > 0)) stage = 'exploding';
+  else if (peakI < n - Math.min(7, n >> 1) && peak > 0 && last7 < peak * .35 && rel < 0) stage = 'peaked';
+  else if (rel < -.4) stage = 'declining';
+  else if (rel > .15) stage = 'regular';
+  else stage = 'flat';
+  pace = !tot ? 'flat' : (z > 3 && vol > 1.2) || (best.k >= n - 7 && Math.abs(best.d) > mean) ? 'rapid' : 'sustained';
+  return { stage, pace, z: +z.toFixed(2), cp: best.k >= 0 ? { day: best.k - n, shift: +best.d.toFixed(2) } : null, slope: +rel.toFixed(2), vol: +vol.toFixed(2), fad: pace === 'rapid' && vol > 1.5 };
+}
 function series(sigs, G, now) { // 归一化日序列（cluster 当日占全局当日信号比例 ×1000），排除快照型来源
   const today = Math.floor(now / 86400), cnt = {};
   for (const s of sigs) if (!SNAP.has(s.source)) { const d = Math.floor(s.ts / 86400); cnt[d] = (cnt[d] || 0) + 1; }
@@ -74,9 +99,27 @@ function series(sigs, G, now) { // 归一化日序列（cluster 当日占全局�
   const velocity = w1 - w2, accel = (w1 - w2) - (w2 - w3);
   const tot = raw.reduce((a, b) => a + b, 0), peak = Math.max(...raw), active = raw.filter(x => x > 0).length;
   const oneoff = tot >= 3 && (peak / tot > 0.6 && active <= 3);
-  return { days, raw, rate: rate.map(x => +x.toFixed(2)), w1: +w1.toFixed(2), w2: +w2.toFixed(2), w3: +w3.toFixed(2), velocity: +velocity.toFixed(2), accel: +accel.toFixed(2), oneoff, active, tot };
+  // 只用"全库有足量采集"的日子（当日全库信号 ≥ 近 7 天中位数的 25%），早期覆盖不足的日子不参与，避免把"开始采集"误判成"爆发"
+  const gd = days.map((_, i) => G.daily[today - 27 + i] || 0), g7 = [...gd.slice(-7)].sort((a, b) => a - b)[3] || 0, from = gd.findIndex(x => x >= g7 * .25);
+  const cov = from < 0 ? [] : rate.slice(from, -1) /* 今天未过完，不参与 */, tot0 = raw.slice(Math.max(0, from), -1).reduce((a, b) => a + b, 0);
+  const life = cov.length >= 7 && cov.length < 14 && tot0 >= 6 ? { ...lifecycle(cov), covered: cov.length, provisional: true } : cov.length < 14 ? { stage: 'young', pace: 'na', covered: cov.length, z: 0, slope: 0, vol: 0 } : tot0 < 6 ? { stage: 'sparse', pace: 'na', covered: cov.length, z: 0, slope: 0, vol: 0 } : { ...lifecycle(cov), covered: cov.length };
+  return { life, days, raw, rate: rate.map(x => +x.toFixed(2)), w1: +w1.toFixed(2), w2: +w2.toFixed(2), w3: +w3.toFixed(2), velocity: +velocity.toFixed(2), accel: +accel.toFixed(2), oneoff, active, tot };
 }
 
+// v3.0 主题命名（借鉴 BERTopic c-TF-IDF 的 reduce_frequent_words（√tf）与 MMR 多样性、Top2Vec 的"贴近质心"代表词；自写实现）
+// 1) 英文词形归并 agent/agents/agentic → agent；2) 中文二元片段拼接 机器+器人 → 机器人；3) √tf × idf；4) MMR：与已选词共现 ≥80% 的同义片段不重复入选
+const TOPIC_V3 = false;
+const stem = w => /^[a-z]/.test(w) && w.length > 4 ? w.replace(/(ically|ical|ic|ing|ers|er|es|s)$/, '') : w;
+function topicTerms(sigs, df, N) {
+  const occ = {}; sigs.forEach((s, i) => { for (const t of new Set(tokens(s.title))) (occ[t] ||= new Set()).add(i); });
+  // 中文二元拼接：A=xy, B=yz 且共现 ≥80% → xyz
+  const cn = Object.keys(occ).filter(t => /^[\u4e00-\u9fa5]{2}$/.test(t) && occ[t].size >= 2);
+  for (const a of cn) for (const b of cn) if (a !== b && occ[a] && occ[b] && a[1] === b[0]) { const inter = [...occ[a]].filter(i => occ[b].has(i)).length; if (inter >= .8 * Math.min(occ[a].size, occ[b].size)) { const m = a + b[1]; occ[m] = new Set([...occ[a]].filter(i => occ[b].has(i))); df[m] = Math.min(df[a] || 1, df[b] || 1); delete occ[a]; delete occ[b]; } }
+  const grp = {}; for (const [t, set] of Object.entries(occ)) { const k = stem(t); const g = grp[k] ||= { forms: {}, set: new Set(), df: 0 }; g.forms[t] = set.size; set.forEach(i => g.set.add(i)); g.df = Math.max(g.df, df[t] || 1); }
+  const cand = Object.values(grp).filter(g => g.set.size >= 2).map(g => ({ w: Object.entries(g.forms).sort((a, b) => b[1] - a[1] || a[0].length - b[0].length)[0][0], set: g.set, s: Math.sqrt(g.set.size / sigs.length) * Math.log(1 + N / g.df) })).sort((a, b) => b.s - a.s);
+  const out = []; for (const c of cand) { if (out.length >= 6) break; const red = out.some(o => { const inter = [...c.set].filter(i => o.set.has(i)).length; return (inter >= .8 * c.set.size && (o.w.includes(c.w) || c.w.includes(o.w) || stem(o.w) === stem(c.w))); }); if (!red) out.push(c); }
+  return out.map(c => c.w);
+}
 function buildOpp(c, G, df, N, now, cfg, ctx) {
   const sigs = c.m; sigs.sort((a, b) => b.ts - a.ts);
   const by = k => sigs.filter(s => s.kind === k);
@@ -84,8 +127,7 @@ function buildOpp(c, G, df, N, now, cfg, ctx) {
   const sources = [...new Set(sigs.map(s => s.source))];
   const wsum = sigs.reduce((a, s) => a + (s.weight || .5), 0), avgW = wsum / sigs.length;
   // 主题标签：c-TF-IDF
-  const tf = {}; for (const s of sigs) for (const t of new Set(tokens(s.title))) tf[t] = (tf[t] || 0) + 1;
-  const terms = Object.entries(tf).filter(([t, f]) => f >= 2).map(([t, f]) => [t, f / sigs.length * Math.log(1 + N / (df[t] || 1))]).sort((a, b) => b[1] - a[1]).slice(0, 6).map(x => x[0]);
+  const terms = TOPIC_V3 ? topicTerms(sigs, df, N) : (() => { const tf = {}; for (const s of sigs) for (const t of new Set(tokens(s.title))) tf[t] = (tf[t] || 0) + 1; return Object.entries(tf).filter(([t, f]) => f >= 2).map(([t, f]) => [t, f / sigs.length * Math.log(1 + N / (df[t] || 1))]).sort((a, b) => b[1] - a[1]).slice(0, 6).map(x => x[0]); })();
   let rep = sigs[0], rb = -1; for (const s of sigs) { const d = dot(s.vec, c.cen); if (d > rb) { rb = d; rep = s; } }
   const theme = terms.slice(0, 3).join(' · ') || rep.title.slice(0, 40);
   // 行业
@@ -116,6 +158,8 @@ function buildOpp(c, G, df, N, now, cfg, ctx) {
   let g = 45 + Math.tanh(ts.velocity / 2) * 25 + Math.tanh(ts.accel / 2) * 12 + Math.min(10, Math.log2(1 + ts.w1) * 3);
   const gb = [`归一化日速率：近 7 天 ${ts.w1}‰，前 7 天 ${ts.w2}‰，再前 7 天 ${ts.w3}‰`, `速度 ${ts.velocity >= 0 ? '+' : ''}${ts.velocity}‰/周，加速度 ${ts.accel >= 0 ? '+' : ''}${ts.accel}‰/周²`];
   const vels = sigs.filter(s => s.velocity != null && SNAP.has(s.source)); if (vels.length) { const mv = vels.reduce((a, s) => a + s.velocity, 0) / vels.length; g += Math.tanh(mv / 100) * 8; gb.push(`快照型增速指标（star/下载/浏览）均值 ${mv.toFixed(0)}%（${vels.length} 条）`); }
+  const LS = { exploding: '爆发', regular: '稳定增长', peaked: '已见顶', declining: '下滑', flat: '平稳' };
+  if (ts.life?.provisional) gb.push(`生命周期（初判，仅 ${ts.life.covered} 天有效采集，不计分）：${LS[ts.life.stage] || ts.life.stage}`); else if (ts.life && LS[ts.life.stage]) { const L = ts.life; if (L.stage === 'exploding' && !L.fad) { g += 6; gb.push(`生命周期：${LS[L.stage]}（${L.pace === 'rapid' ? '急升' : '持续'}，近 3 日 robust z=${L.z}），+6`); } else if (L.stage === 'peaked' || L.stage === 'declining') { g -= 8; gb.push(`生命周期：${LS[L.stage]}（相对变化 ${L.slope}），−8`); } else gb.push(`生命周期：${LS[L.stage]}（z=${L.z}，波动 ${L.vol}）`); if (L.fad && !ts.oneoff) { g -= 8; gb.push('⚠ 急升且波动大（疑似短期热点，参照 Glimpse「趋势 vs 一时热潮」），−8'); } }
   if (ts.oneoff) { g -= 18; gb.push('⚠ 一次性热点：60% 以上信号集中在 ≤3 天内，已降权 −18'); }
   if (seasonal) { g -= 10; gb.push(`⚠ 季节性词「${seasonal}」：疑似季节性噪声，已降权 −10（不足一年数据，无法做同比分解）`); }
   D.growth = { score: clamp(g), conf: conf(ts.tot), basis: gb, evidence: ev(sigs) };
