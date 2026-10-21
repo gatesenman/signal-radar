@@ -447,4 +447,6 @@ Windows 包：`release/SignalRadar-Setup-3.1.0-x64.exe`（175,044,272 B）。分
 | v3.4 | ~86% | 36氪 30 条/轮 | （随 v3.5） | — | — | — |
 | v3.5 | ~86%+ | model_transfer 1/1 | （随 v3.6） | — | — | — |
 | v3.6 | ~86% | 阶段门/一页纸 | 23/23 | 1.30/1.30s | 28.7s | — |
-| v3.7 | ~86% | P2 11/12 | 23/23 | 1.19/1.39s | 27.1s | 见 small-3.7 |
+| v3.7 | ~86% | P2 11/12 | 23/23 | 1.19/1.39s | 27.1s | 175.05MB |
+
+Windows 包：`release/SignalRadar-Setup-3.7.0-x64.exe`（175,049,369 B）。分片：`release/small-3.7/` part00–part08 + join.bat + SHA256SUMS.txt。SHA256 = 393f5d95…0ab8，本机合并校验一致。
