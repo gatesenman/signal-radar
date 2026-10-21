@@ -146,7 +146,11 @@
     "extraResources": [
       {
         "from": "models",
-        "to": "models"
+        "to": "models",
+        "filter": [
+          "**/*",
+          "!**/*.box-store-snap*"
+        ]
       }
     ],
     "npmRebuild": false,
