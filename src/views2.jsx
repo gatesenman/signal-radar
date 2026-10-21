@@ -58,11 +58,12 @@ export function Sources({ cfg, setCfg, refresh, busy, prog, say }) {
     </tbody></table></div></>;
 }
 export function Report({ cur, say }) {
-  const [md, setMd] = useState(''), [kind, setKind] = useState('report');
-  useEffect(() => { if (!cur) return; (kind === 'report' ? api.call('report:md', [cur.id]) : api.call('memo:md', cur.id)).then(setMd); }, [cur, kind]);
-  const save = async fmt => { const p = await api.call(kind === 'report' ? 'report:save' : 'memo:save', kind === 'report' ? { ids: [cur.id], fmt } : { id: cur.id, fmt }); p && say('已导出：' + p); };
-  return <><PH icon="file-text-line" title="报告与 IC 备忘录" sub={cur ? cur.title : '请先选择机会'}><div className="tabs" style={{ margin: 0 }}><a className={kind === 'report' ? 'on' : ''} onClick={() => setKind('report')}>研究报告</a><a className={kind === 'memo' ? 'on' : ''} onClick={() => setKind('memo')}>IC 备忘录</a></div>
+  const [md, setMd] = useState(''), [kind, setKind] = useState('brief'), [gate, setGate] = useState(null);
+  useEffect(() => { if (!cur) return; const call = kind === 'report' ? api.call('report:md', [cur.id]) : kind === 'memo' ? api.call('memo:md', cur.id) : api.call('brief:md', cur.id); call.then(setMd); api.call('stage:gate', cur.id).then(setGate); }, [cur, kind]);
+  const save = async fmt => { const p = await api.call(kind === 'report' ? 'report:save' : kind === 'memo' ? 'memo:save' : 'brief:save', kind === 'report' ? { ids: [cur.id], fmt } : { id: cur.id, fmt }); p && say('已导出：' + p); };
+  return <><PH icon="file-text-line" title="报告与 IC 备忘录" sub={cur ? cur.title : '请先选择机会'}><div className="tabs" style={{ margin: 0 }}><a className={kind === 'brief' ? 'on' : ''} onClick={() => setKind('brief')}>决策一页纸</a><a className={kind === 'report' ? 'on' : ''} onClick={() => setKind('report')}>研究报告</a><a className={kind === 'memo' ? 'on' : ''} onClick={() => setKind('memo')}>IC 备忘录</a></div>
     <button className="s" disabled={!cur} onClick={() => save('md')}><I n="markdown-line" />MD</button><button className="s" disabled={!cur} onClick={() => save('html')}><I n="html5-line" />HTML</button><button disabled={!cur} onClick={() => save('pdf')}><I n="file-pdf-2-line" />PDF</button></PH>
+    {cur && gate && <div className={'card ' + (gate.ok ? '' : 'warn')} style={{ marginBottom: 8 }}><b>阶段门</b>：{gate.ok ? '✅ 可进入下一阶段' + (gate.next ? '（' + gate.next + '）' : '') : '⚠ ' + gate.miss.join('；')}</div>}
     {!cur ? <Empty text="在机会雷达中选择一个机会" /> : <div className="card"><pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'Noto Sans CJK SC, sans-serif', lineHeight: 1.7, fontSize: 13 }}>{md}</pre></div>}</>;
 }
 export function Share({ load, say }) {

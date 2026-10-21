@@ -412,3 +412,17 @@ Windows 包：`release/SignalRadar-Setup-3.1.0-x64.exe`（175,044,272 B）。分
 - 簇级迁移：标题命中模式 + 源行业有模式信号；软模式不轻易迁到制造硬行业。
 - DEMAND 集合加入 v2ex、kr_flash。
 - 结果：model_transfer 0→1（Agent 平台从软件迁到互动媒体，目标需求 43）。抽检 1/1 合理。
+
+## v3.6：协作、导出与决策工作流
+**1. 竞品**：PitchBook 的 IC Memo / Exit Predictor / Opportunity Score；强调「建议 + 证据 + 阶段」。来源：https://pitchbook.com/help/understanding-vc-exit-predictor
+
+**2. 开源**：无强对应；沿用本地 Markdown → PDF。
+
+**3. 反思**：报告页只有研究报告和 IC，缺一页纸决策摘要；推进阶段没有门槛；IC 未纳入体检分/生命周期/编号引文。
+
+**4. 实现**
+- `decisionBrief`：建议、阶段门、主张引文、单位经济、证据前 12。
+- `stageGate`：痛点有出处、证据非空、验证清单 ≥2、置信 ≥0.4。
+- 报告页默认「决策一页纸」，显示阶段门；详情推进阶段时未过门会确认。
+- IC Memo 增加体检分与生命周期行。
+- 指标：E2E **23/23**；启动 1.30s / 1.30s；采集 28.7s。
