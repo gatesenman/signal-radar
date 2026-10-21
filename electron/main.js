@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, Notification, shell, Menu, nativeIm
 const path = require('path'), fs = require('fs');
 const initSqlJs = require('sql.js');
 const { SOURCES, UNAVAILABLE } = require('./collectors'); require('./extra');
-const E = require('./engine'), EMB = require('./embed'), M = require('./macro'), CH = require('./chain');
+const E = require('./engine'), EMB = require('./embed'), M = require('./macro'), CH = require('./chain'), DIMS = require('./dims');
 const { INDUSTRIES, SECTORS, GB } = require('./industries');
 
 let db, dbFile, win, timer, busy = false, saveT, lastCluster = {};
@@ -83,6 +83,8 @@ async function recluster() {
   const sigs = rows.map(r => { const m = JSON.parse(r.meta || '{}'); const b = r.emb; return { ...r, ...m, industry: undefined, vec: new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4), emb: undefined, meta: undefined }; });
   const res = E.cluster(sigs, cfg); lastCluster = { clusters: res.clusters, pool: res.pool, ms: Date.now() - t0 };
   run('DELETE FROM opps'); for (const o of res.opps) run('INSERT INTO opps VALUES(?,?,?,?)', [o.id, JSON.stringify(o), o.total, o.updated]);
+  try { const all30 = all('SELECT id,source,kind,region,title,url,text,ts,engagement,weight,ind,meta FROM signals WHERE ts > ? OR source = ?', [Math.floor(Date.now() / 1000) - 60 * 86400, 'amazon_reviews']).map(r => ({ ...r, ...JSON.parse(r.meta || '{}'), meta: undefined }));
+    const dr = DIMS.run({ signals: all30, opps: res.opps, chain: getK('chain'), macro: getK('macro') }); setK('dims', { ...dr, at: Date.now() }); log(`机会维度：${dr.cards.length} 张卡片，${Object.values(dr.counts).filter(Boolean).length}/${dr.dims.length} 个维度有命中`); } catch (e) { log('维度引擎失败：' + e.message, 'error'); }
   log(`语义聚类：${res.pool} 条信号 → ${res.clusters} 个簇 → ${res.opps.length} 个机会（相似度阈值 ${cfg.clusterSim}，${lastCluster.ms}ms）`);
 }
 function ws(id) { const r = all('SELECT json FROM workspace WHERE opp_id=?', [id])[0]; return r ? JSON.parse(r.json) : {}; }
@@ -94,7 +96,7 @@ function merged(o, macro) { const w = ws(o.id); const l = w.llm || {}; const ch 
   return { ...o, ...l, dims, unitEcon: ue, statement: l.statement || o.statement, checklist: w.checklist || l.checklist || o.checklist, stage: w.stage || 'discover', notes: w.notes || '', watched: !!w.watched, ruleTotal: o.total, total: Math.round(o.total + delta), comments: w.comments || [], tam: E.tam({ ...o, unitEcon: ue }, macro, w.assump || {}), assump: w.assump || {}, chain: ch, asymmetry }; }
 function chainLink(o, chain) { const c = chainFor(o.industry, chain); if (!c) return null; const chokes = c.nodes.filter(n => n.choke);
   return { code: c.code, name: c.name, nodes: c.nodes, chokes: chokes.map(n => ({ node: n.stage + '·' + n.name, why: n.chokeWhy, growth: n.growth, url: n.url })) }; }
-function getOpps() { const macro = { ...(getK('macro') || {}), stats: getK('istats'), chainData: getK('chain') }; const ids = new Set(); const list = all('SELECT json FROM opps ORDER BY total DESC').map(r => { const o = JSON.parse(r.json); ids.add(o.id); return merged(o, macro); });
+function getOpps() { const DM = getK('dims')?.oppDims || {}; const macro = { ...(getK('macro') || {}), stats: getK('istats'), chainData: getK('chain') }; const ids = new Set(); const list = all('SELECT json FROM opps ORDER BY total DESC').map(r => { const o = JSON.parse(r.json); ids.add(o.id); const m = merged(o, macro); const dh = DM[o.id] || []; m.dims = dh; if (dh.length > 1) { m.dimBoost = 8 * (dh.length - 1); m.total = Math.min(100, m.total + m.dimBoost); } return m; }).sort((a, b) => b.total - a.total);
   for (const r of all('SELECT * FROM workspace')) { const w = JSON.parse(r.json); if (!ids.has(r.opp_id) && w.snapshot && ((w.stage && w.stage !== 'discover') || w.watched)) list.push({ ...merged(w.snapshot, macro), stale: true }); }
   return list; }
 function checkAlerts() {
@@ -174,6 +176,7 @@ const H = {
   'coverage': () => coverage(), 'industries': () => INDUSTRIES,
   'macro:get': () => getK('macro'), 'macro:refresh': async () => { const m = await refreshMacro(); save(); return m; },
   'opps:list': () => getOpps(),
+  'dims:get': () => getK('dims') || { cards: [], matrix: {}, oppDims: {}, counts: {}, dims: DIMS.DIMS },
   'chain:get': () => ({ chain: getK('chain'), opps: getOpps().filter(o => o.chain).map(o => ({ id: o.id, title: o.title, total: o.total, industry: o.industry, chain: o.chain.code, noise: o.quality?.noise })) }),
   'chain:refresh': async () => { const c = await refreshChain(); save(); return c; },
   'stats:get': () => getK('istats'), 'stats:refresh': async () => { const s = await refreshStats(); save(); return s; },
