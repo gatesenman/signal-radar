@@ -12,7 +12,7 @@
 [data-theme=light]{
   --bg:#f5f7fb;--bg-chrome:#e9edf4;--bg2:#eef1f6;--panel:#ffffff;--panel2:#f7f9fc;--input:#ffffff;--pop:#ffffff;
   --hover:#e3e8f1;--sel:#dbe6ff;--line:#dde3ec;--line2:#c8d1de;--row:#eceff5;--scroll:#c3ccd9;
-  --tx:#1c2433;--tx-strong:#0b1220;--tx2:#3d4757;--mut:#5a6578;--mut2:#667185;
+  --tx:#1c2433;--tx-strong:#0b1220;--tx2:#3d4757;--mut:#4a5568;--mut2:#5a6578; /* v3.7 P2-7 浅色对比度 */
   --ac:#2563eb;--ac-h:#1d4ed8;--ac2:#6d28d9;--on-ac:#ffffff;--link:#1d4ed8;
   --ok:#047857;--ok-bg:#e3f7ee;--ok-bd:#9fdcc0;--warn:#a15c07;--warn-bg:#fdf3dc;--warn-bd:#f0cf86;--bad:#b91c1c;--bad-bg:#fde8e8;--bad-bd:#f3b4b4;--pur:#6d28d9;--pur-bg:#efe7ff;--info-bg:#e3ecff;
   --c1:#2563eb;--c2:#0891b2;--c3:#7c3aed;--c4:#d97706;--c5:#059669;--c6:#db2777;--c7:#ea580c;--c8:#64748b;--heat0:#eef2f8;--heat1:#93c5fd;--heat2:#2563eb;--heat3:#b45309;--shadow:0 10px 30px rgba(15,23,42,.15);--overlay:rgba(15,23,42,.35);color-scheme:light}

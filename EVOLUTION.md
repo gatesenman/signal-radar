@@ -426,3 +426,13 @@ Windows 包：`release/SignalRadar-Setup-3.1.0-x64.exe`（175,044,272 B）。分
 - 报告页默认「决策一页纸」，显示阶段门；详情推进阶段时未过门会确认。
 - IC Memo 增加体检分与生命周期行。
 - 指标：E2E **23/23**；启动 1.30s / 1.30s；采集 28.7s。
+
+## v3.7：性能、包体积与剩余 P2 收尾
+**1. 竞品 / 开源**：electron-builder `compression: maximum`；表格虚拟化成本高，本轮不做。
+
+**2. 反思**：P2 剩 8 项（P2-5 已在 v2.6 解决未勾）；安装包约 175MB 主要是 Electron 运行时，业务代码占比小。
+
+**3. 实现**
+- P2-5/6/7/8/9/11/12 关闭或改善（见 UI-AUDIT.md）；P2-10 情境插图保留。
+- `build.compression = maximum`。
+- 不对称页改 DataTable。

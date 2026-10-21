@@ -46,8 +46,8 @@ export function Dims({ open }) {
   if (!d.cards?.length) return <><PH icon="stack-line" title="机会维度" /><Empty text="还没有维度结果：完成一次「刷新数据」或「重新聚类」后，15 个维度引擎会自动运行。" /></>;
   const en = getLang() === 'en'; const secs = [...new Map(d.cards.map(c => [c.sector, en ? (c.sectorEn || c.sectorCn) : c.sectorCn])).entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])));
   const dl = d.dims, mx = Math.max(1, ...Object.values(d.matrix));
-  const data = []; dl.forEach(([id], y) => secs.forEach(([s], x) => { const v = d.matrix[id + '|' + s] || 0; data.push([x, y, v || '-']); }));
-  const opt = { tooltip: { formatter: p => `${dl[p.value[1]][1]} × ${secs[p.value[0]][1]}：${p.value[2] === '-' ? 0 : p.value[2]} 个机会` }, grid: { left: 150, right: 20, top: 10, bottom: 70 },
+  const data = []; dl.forEach(([id], y) => secs.forEach(([s], x) => { const v = d.matrix[id + '|' + s] || 0; data.push([x, y, v]); }));
+  const opt = { tooltip: { formatter: p => `${dl[p.value[1]][1]} × ${secs[p.value[0]][1]}：${p.value[2] || 0} 个机会` }, grid: { left: 150, right: 20, top: 10, bottom: 70 },
     xAxis: { type: 'category', data: secs.map(s => s[1]), axisLabel: { rotate: 40, color: 'var(--mut)', fontSize: 11 }, splitArea: { show: true } }, yAxis: { type: 'category', data: dl.map(x => en && window.__dimEn?.[x[0]] ? window.__dimEn[x[0]] : x[1]), inverse: true, axisLabel: { color: 'var(--mut)', fontSize: 11 } },
     visualMap: { min: 0, max: mx, show: false, inRange: { color: ['var(--heat0)', 'var(--heat1)', 'var(--heat2)', 'var(--heat3)'] } }, series: [{ type: 'heatmap', data, label: { show: true, color: 'var(--tx)', fontSize: 10 } }] };
   const onCell = p => { setDim(dl[p.value[1]][0]); setSec(secs[p.value[0]][0]); };

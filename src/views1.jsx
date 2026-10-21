@@ -37,7 +37,15 @@ export function Radar({ opps, open, refresh, busy, oppCtx, inds = [], upd }) {
 export function Asym({ opps, open }) {
   const rows = opps.filter(o => o.asymmetry.length).sort((a, b) => Math.abs(b.asymMetrics.cnUs.value) - Math.abs(a.asymMetrics.cnUs.value));
   return <><PH icon="scales-3-line" title="不对称信息" sub="中美热度差 · 技术 vs 产品 · 需求/供给 · 资本/注意力 · 人才密度（相对全库基线的 log2 或比值）" />
-    {!rows.length ? <Empty text="当前机会尚未形成显著不对称" /> : <div className="card"><table><thead><tr><th>机会</th><th>中美</th><th>技术/产品</th><th>需求/供给</th><th>资本/注意力</th><th>人才</th><th>摘要</th></tr></thead><tbody>{rows.map(o => <tr key={o.id} onClick={() => open(o.id)}><td><b>{o.title}</b></td><td className={Math.abs(o.asymMetrics.cnUs.value) >= 1 ? 'up' : ''}>{o.asymMetrics.cnUs.value}</td><td>{o.asymMetrics.techProduct.value}×</td><td>{o.asymMetrics.demandSupply.value}×</td><td>{o.asymMetrics.capitalAttention.value}×</td><td>{o.asymMetrics.talent.value}×</td><td>{o.asymmetry.map((a, i) => <span key={i} className="tag p" title={a.desc}>{a.type}</span>)}</td></tr>)}</tbody></table></div>}</>;
+    {!rows.length ? <Empty text="当前机会尚未形成显著不对称" /> : <div className="card"><DataTable name="asym" rows={rows} onRow={r => open(r.id)} cols={[
+      { k: 'title', n: '机会', r: r => <b>{r.title}</b> },
+      { k: 'cnUs', n: '中美', w: 70, v: r => r.asymMetrics.cnUs.value, r: r => r.asymMetrics.cnUs.value.toFixed(2) },
+      { k: 'tp', n: '技术/产品', w: 80, v: r => r.asymMetrics.techProduct.value, r: r => r.asymMetrics.techProduct.value.toFixed(2) },
+      { k: 'ds', n: '需求/供给', w: 80, v: r => r.asymMetrics.demandSupply.value, r: r => r.asymMetrics.demandSupply.value.toFixed(2) },
+      { k: 'ca', n: '资本/注意力', w: 90, v: r => r.asymMetrics.capitalAttention.value, r: r => r.asymMetrics.capitalAttention.value.toFixed(2) },
+      { k: 'talent', n: '人才', w: 60, v: r => r.asymMetrics.talent.value, r: r => r.asymMetrics.talent.value.toFixed(2) },
+      { k: 'sum', n: '摘要', r: r => <span className="mut">{(r.asymmetry[0]?.desc || '').slice(0, 60)}</span> },
+    ]} /></div>}</>;
 }
 export function Funding({ open }) {
   const [data, setData] = useState(null);
