@@ -1,7 +1,11 @@
 import { React, useEffect, useState, api, I, CATC, STAGES, fmt, Src, L, Bar, PH, Empty, Chart, radarOpt, D } from './ui.jsx';
-export function Board({ opps, open, upd, oppCtx }) {
-  return <><PH icon="kanban-view" title="机会看板" sub="拖拽阶段用右键或下拉；双击打开详情" />
-    <div className="kanban">{STAGES.map(([k, n, ic]) => { const list = opps.filter(o => o.stage === k); return <div key={k} className="col"><h4><I n={ic.slice(3)} />{n}<span className="cnt">{list.length}</span></h4>{list.map(o => <div key={o.id} className="card" onClick={() => open(o.id)} onContextMenu={e => oppCtx(e, o)}><b>{o.title}</b><div className="mut">{o.industryName}</div><div className="row"><span className="score">{o.total}</span><span className="sp" /><I n={o.watched ? 'star-fill' : 'star-line'} c={o.watched ? '#fbbf24' : '#6b778c'} /></div></div>)}</div>; })}</div></>;
+export function Board({ opps, open, upd, oppCtx, say }) {
+  const [over, setOver] = useState(null);
+  const drop = async (e, k) => { e.preventDefault(); setOver(null); const id = e.dataTransfer.getData('text/opp'); if (id) { await upd(id, { stage: k }); say?.('已移到「' + STAGES.find(s => s[0] === k)[1] + '」'); } };
+  return <><PH icon="kanban-view" title="机会看板" sub="拖拽卡片切换阶段：发现 → 初筛 → 深研 → 验证 → 立项 / 放弃；也可右键移动" />
+    <div className="kanban">{STAGES.map(([k, n, ic]) => { const list = opps.filter(o => (o.stage === 'research' && k === 'research') || o.stage === k); return <div key={k} data-stage={k} className={'col' + (over === k ? ' over' : '')} onDragOver={e => { e.preventDefault(); setOver(k); }} onDragLeave={() => setOver(null)} onDrop={e => drop(e, k)}><h4><I n={ic.slice(3)} />{n}<span className="cnt">{list.length}</span></h4>
+      {!list.length && <div className="mut" style={{ fontSize: 11, padding: 8, textAlign: 'center' }}>拖到这里</div>}
+      {list.slice(0, 60).map(o => <div key={o.id} data-opp={o.id} className="card" draggable onDragStart={e => { e.dataTransfer.setData('text/opp', o.id); e.dataTransfer.effectAllowed = 'move'; }} onDoubleClick={() => open(o.id)} onContextMenu={e => oppCtx(e, o)}><b>{o.title}</b><div className="mut">{o.industryName}</div><div className="row"><span className="score">{o.total}</span><span className="sp" /><I n={o.watched ? 'star-fill' : 'star-line'} c={o.watched ? 'var(--warn)' : 'var(--mut)'} /></div></div>)}</div>; })}</div></>;
 }
 export function Validate({ opps, open, upd, say }) {
   const watched = opps.filter(o => o.watched || o.stage === 'validate' || o.stage === 'research');
@@ -10,7 +14,7 @@ export function Validate({ opps, open, upd, say }) {
     <div className="filters"><select value={sel || ''} onChange={e => setSel(e.target.value)} style={{ width: 320 }}><option value="">选择机会…</option>{watched.map(o => <option key={o.id} value={o.id}>{o.total} · {o.title}</option>)}</select><button className="s" disabled={!cur} onClick={() => open(cur.id)}><I n="file-search-line" />详情</button></div>
     {!cur ? <Empty text="先把机会加入观察或移到「研究/验证」阶段" /> : <div className="card"><h3><span>{cur.title}</span><span className="mut">{cur.checklist.filter(c => c.status === 'done').length}/{cur.checklist.length}</span></h3>
       {cur.checklist.map((c, i) => <div key={i} className="row" style={{ marginBottom: 8, alignItems: 'flex-start' }}><input type="checkbox" style={{ width: 16, marginTop: 4 }} checked={c.status === 'done'} onChange={e => upd(cur.id, { checklist: cur.checklist.map((x, j) => j === i ? { ...x, status: e.target.checked ? 'done' : 'todo' } : x) })} /><div className="sp"><b>{c.step}</b><div className="mut">{c.detail} · 指标：{c.metric}</div>
-        <input placeholder="实验记录…" value={c.note || ''} onChange={e => upd(cur.id, { checklist: cur.checklist.map((x, j) => j === i ? { ...x, note: e.target.value } : x) })} style={{ marginTop: 4 }} /></div></div>)}</div>}</>;
+        <input placeholder="实验记录…（失焦自动保存）" key={cur.id + i} defaultValue={c.note || ''} onBlur={e => e.target.value !== (c.note || '') && upd(cur.id, { checklist: cur.checklist.map((x, j) => j === i ? { ...x, note: e.target.value } : x) }).then(() => say?.('实验记录已保存'))} style={{ marginTop: 4 }} /></div></div>)}</div>}</>;
 }
 export function Compare({ opps, open }) {
   const [a, setA] = useState(opps[0]?.id), [b, setB] = useState(opps[1]?.id);

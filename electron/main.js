@@ -52,6 +52,7 @@ async function embedPending() {
   log(`语义嵌入 ${rows.length} 条信号，用时 ${((Date.now() - t0) / 1000).toFixed(1)}s，并完成行业打标`); send('progress', { id: '_embed', state: 'ok' }); return rows.length;
 }
 async function refresh(opt = {}) {
+  if (!opt.only && process.env.SR_ONLY) opt = { ...opt, only: process.env.SR_ONLY.split(',') };
   if (busy) return { busy: true }; busy = true;
   const cfg = getCfg(), kw = kwList(cfg), report = [], state = getK('srcState', {}), nowS = Math.floor(Date.now() / 1000);
   const ctx = { state, dataDir: app.getPath('userData'), log, industries: INDUSTRIES };

@@ -73,8 +73,8 @@ export function DataTable({ rows, cols, onRow, batch = [], id = 'id', name = 'ta
 export const F0 = { sector: '', region: '', days: 30, minScore: 0, minConf: 0, source: '', dim: '' };
 export function applyF(opps, f) { const now = Date.now() / 1000; return opps.filter(o => (!f.sector || (o.industry || '').startsWith(f.sector)) && (!f.region || (o.regions || []).includes?.(f.region) || JSON.stringify(o.regionMix || '').includes(f.region)) && (!f.days || !o.updated || o.updated > now - f.days * 86400 || o.updated > 1e12) && (o.total || 0) >= f.minScore && (o.conf || 0) >= f.minConf && (!f.source || (o.sources || []).some?.(s => (s.id || s) === f.source)) && (!f.dim || (o.dimHits || []).includes(f.dim))); }
 export function FilterBar({ f, setF, sectors, dims = [] }) {
-  const [views, setViews] = useState(() => JSON.parse(localStorage.getItem('views') || '[]'));
-  const save = () => { const n = prompt('保存当前筛选为视图，名称：'); if (!n) return; const v = [...views.filter(x => x.n !== n), { n, f }]; setViews(v); localStorage.setItem('views', JSON.stringify(v)); };
+  const [views, setViews] = useState(() => JSON.parse(localStorage.getItem('views') || '[]')), [nm, setNm] = useState(null);
+  const save = n => { setNm(null); if (!n) return; const v = [...views.filter(x => x.n !== n), { n, f }]; setViews(v); localStorage.setItem('views', JSON.stringify(v)); };
   const S = (k, v) => setF({ ...f, [k]: v });
   return <div className="fbar"><I n="filter-3-line" />
     <select value={f.sector} onChange={e => S('sector', e.target.value)}><option value="">全部行业</option>{sectors.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>
@@ -83,7 +83,7 @@ export function FilterBar({ f, setF, sectors, dims = [] }) {
     <label className="chip">分数 ≥ <input type="number" min="0" max="100" step="5" value={f.minScore} onChange={e => S('minScore', +e.target.value)} style={{ width: 48 }} /></label>
     <label className="chip">置信度 ≥ <input type="number" min="0" max="1" step=".1" value={f.minConf} onChange={e => S('minConf', +e.target.value)} style={{ width: 48 }} /></label>
     {dims.length > 0 && <select value={f.dim} onChange={e => S('dim', e.target.value)}><option value="">全部维度</option>{dims.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>}
-    <button className="s" onClick={() => setF(F0)}><I n="eraser-line" /> 重置</button><button className="s" onClick={save}><I n="bookmark-line" /> 保存视图</button>
+    <button className="s" onClick={() => setF(F0)}><I n="eraser-line" /> 重置</button>{nm == null ? <button className="s" onClick={() => setNm('')}><I n="bookmark-line" /> 保存视图</button> : <span className="chip"><input autoFocus placeholder="视图名称，回车保存" value={nm} onChange={e => setNm(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') save(nm.trim()); if (e.key === 'Escape') setNm(null); }} style={{ width: 140 }} /></span>}
     {views.map(v => <span key={v.n} className="chip"><a onClick={() => setF({ ...F0, ...v.f })}>{v.n}</a> <I n="close-line" onClick={() => { const x = views.filter(y => y.n !== v.n); setViews(x); localStorage.setItem('views', JSON.stringify(x)); }} /></span>)}</div>;
 }
 
