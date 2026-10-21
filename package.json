@@ -1,0 +1,87 @@
+{
+  "name": "signal-radar",
+  "version": "2.0.0",
+  "description": "商机雷达 Signal Radar - AI 创业机会发现桌面应用",
+  "main": "electron/main.js",
+  "author": "GAOSICHUN",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev:web": "vite",
+    "build:web": "vite build",
+    "start": "vite build && electron .",
+    "pack:linux": "vite build && electron-builder --linux AppImage tar.gz",
+    "pack:win": "vite build && electron-builder --win nsis",
+    "pack:mac": "vite build && electron-builder --mac dmg"
+  },
+  "build": {
+    "appId": "com.gaosichun.signalradar",
+    "productName": "SignalRadar",
+    "files": [
+      "dist/index.html",
+      "electron/**",
+      "node_modules/sql.js/dist/sql-wasm.wasm",
+      "node_modules/sql.js/dist/sql-wasm.js",
+      "node_modules/sql.js/package.json",
+      "package.json",
+      "dist/assets/**",
+      "build/icon.png",
+      "node_modules/onnxruntime-node/**",
+      "node_modules/onnxruntime-common/**",
+      "node_modules/@huggingface/transformers/**"
+    ],
+    "asarUnpack": [
+      "node_modules/sql.js/dist/**",
+      "node_modules/onnxruntime-node/**",
+      "node_modules/@huggingface/transformers/**",
+      "node_modules/sharp/**",
+      "node_modules/@img/**"
+    ],
+    "linux": {
+      "category": "Office",
+      "target": [
+        "AppImage",
+        "tar.gz"
+      ],
+      "desktop": {
+        "entry": {
+          "Name": "SignalRadar"
+        }
+      },
+      "icon": "build/icons"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.business"
+    },
+    "directories": {
+      "output": "release"
+    },
+    "icon": "build/icon.png",
+    "extraResources": [
+      {
+        "from": "models",
+        "to": "models"
+      }
+    ]
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.3.1",
+    "fast-xml-parser": "^5.11.2",
+    "remixicon": "^4.9.1",
+    "sql.js": "^1.15.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.2",
+    "echarts": "^6.1.0",
+    "electron": "^33.4.11",
+    "electron-builder": "^26.15.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "vite": "^8.3.5"
+  },
+  "desktopName": "signal-radar.desktop"
+}
