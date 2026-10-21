@@ -33,7 +33,7 @@ function tagIndustry(sig, protos) { if (sig.industry && IND[sig.industry]) retur
   return k ? [k, 'keyword'] : [null, null]; }
 
 function cluster(signals, cfg = {}, ctx = {}) {
-  const now = Date.now() / 1000, thr = +cfg.clusterSim || 0.6;
+  const now = +cfg.now || Date.now() / 1000, thr = +cfg.clusterSim || 0.6;
   const pool = signals.filter(s => s.vec && s.kind !== 'macro' && s.ts > now - 30 * 86400).sort((a, b) => (b.engagement || 0) * (b.weight || .5) - (a.engagement || 0) * (a.weight || .5)).slice(0, +cfg.maxSignals || 8000);
   const C = [];
   for (const s of pool) { let bi = -1, bs = thr; for (let i = 0; i < C.length; i++) { const c = dot(s.vec, C[i].cen); if (c > bs) { bs = c; bi = i; } }

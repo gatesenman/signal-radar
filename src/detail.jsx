@@ -1,4 +1,5 @@
 import { React, useState, api, I, D, C, KIND, STAGES, fmt, $M, Src, L, Bar, Conf, Ev, PH, Chart, radarOpt, grid, axl, Empty } from './ui.jsx';
+import { OppHistory } from './views4.jsx';
 export function Detail({ cur, allOpps, upd, load, say, llmOn, setSel, tab, setTab }) {
   const [ld, setLd] = useState(false);
   if (!cur) return <><PH icon="file-search-line" title="机会详情" /><Empty text="请先在机会雷达中选择一个机会" /></>;
@@ -67,7 +68,7 @@ function DReport({ o, open }) {
   return <div className="report grid" style={{ gridTemplateColumns: '160px 1fr', gap: 16 }}>
     <div className="toc">{S.map(([k, n], i) => <a key={k} onClick={() => go(k)}>{i + 1}. {n}</a>)}<div className="mut" style={{ fontSize: 10, marginTop: 12 }}><span className="prov m">●</span> 实测　<span className="prov a">◇</span> 假设/估算</div></div>
     <div>
-      <section id="rp-sum" className="card"><h3>1. 摘要</h3><p style={{ lineHeight: 1.8 }}>{o.summary}</p>
+      <OppHistory id={o.id} /><section id="rp-sum" className="card"><h3>1. 摘要</h3><p style={{ lineHeight: 1.8 }}>{o.summary}</p>
         <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}><span>综合分 <M v={o.total} a t="规则评分：由实测信号指标加权计算，权重为产品假设" /></span><span>置信度 <M v={o.conf} a t="基于来源多样性与样本量的估算" /></span><span>信号 <M v={o.metrics?.signals} /></span><span>来源 <M v={o.sources?.length} /></span>{o.dimHits?.length > 0 && <span>命中维度 <M v={o.dimHits.length} />{o.dimBoost ? `（多维加权 +${o.dimBoost}）` : ''}</span>}</div></section>
       <section id="rp-mkt" className="card"><h3>2. 市场</h3>{tam.tam || tam.value ? <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}>{['tam', 'sam', 'som'].filter(k => tam[k] != null).map(k => <span key={k}>{k.toUpperCase()} <M v={typeof tam[k] === 'number' ? '$' + (tam[k] / 1e9).toFixed(1) + 'B' : String(tam[k])} a={!(k === 'tam' && tam.source)} t={k === 'tam' && tam.source ? '自上而下：' + tam.source : 'SAM/SOM 为渗透率假设'} /></span>)}</div> : <p className="mut">暂无行业产出数据，市场规模见「市场规模」页的假设推算。</p>}
         {tam.method && <p className="mut" style={{ fontSize: 12 }}>方法：{tam.method}</p>}</section>

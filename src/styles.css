@@ -67,3 +67,4 @@ kbd{background:var(--line);border:1px solid var(--line2);border-radius:3px;paddi
 .kpi.unread{border-left:3px solid var(--acc,#3b82f6)}
 .report section{margin-bottom:12px}.report section h3{font-size:15px}.report .toc{position:sticky;top:0;align-self:start;display:flex;flex-direction:column;gap:6px}.report .toc a{cursor:pointer;color:var(--mut)}.report .toc a:hover{color:var(--tx)}
 .ic{display:inline-block;vertical-align:-0.15em;flex:none}
+.seg{display:inline-flex;gap:2px}.grid.g4{grid-template-columns:repeat(4,1fr)}

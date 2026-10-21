@@ -2,10 +2,10 @@ const { app, BrowserWindow, ipcMain, dialog, Notification, shell, Menu, nativeIm
 const path = require('path'), fs = require('fs');
 const initSqlJs = require('sql.js');
 const { SOURCES, UNAVAILABLE } = require('./collectors'); require('./extra');
-const E = require('./engine'), EMB = require('./embed'), M = require('./macro'), CH = require('./chain'), DIMS = require('./dims');
+const E = require('./engine'), EMB = require('./embed'), M = require('./macro'), CH = require('./chain'), DIMS = require('./dims'), SN = require('./snapshots'), zlib = require('zlib');
 const { INDUSTRIES, SECTORS, GB } = require('./industries');
 
-let db, dbFile, win, timer, busy = false, saveT, lastCluster = {};
+let lastDims = null, db, dbFile, win, timer, busy = false, saveT, lastCluster = {};
 const DEFAULTS = { disabledSources: ['ccnews', 'cc_cdx', 'amazon_reviews', 'wayback'], keywords: 'ai agent, humanoid robot, energy storage, glp-1, elder care', skills: '', autoRefresh: false, llmProvider: 'none', openaiBase: 'https://api.openai.com/v1', openaiKey: '', openaiModel: 'gpt-4o-mini', ollamaUrl: 'http://localhost:11434', ollamaModel: 'qwen2.5', githubToken: '', xBearer: '', phToken: '', crunchbaseKey: '', patentsviewKey: '', samKey: '', fredKey: '', censusKey: '', estatKey: '', coreKey: '', s2Key: '', opencorporatesKey: '', companiesHouseKey: '', openalexKey: '', userName: '', clusterSim: 0.6,
   ccNewsFiles: 1, ccNewsMBPerFile: 40, ccDiskMB: 200, cdxTlds: 'ai,io', cdxPaths: '/pricing,/careers', cdxDomains: '', ghaHours: 2, ghaMBPerHour: 150, amazonCats: 'Health_and_Household,Home_and_Kitchen,Electronics,Pet_Supplies,Baby_Products', amazonMBPerCat: 8, sectorQueriesPerRun: 74, weights: {} };
 
@@ -23,6 +23,7 @@ async function initDb() {
   CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT);
   CREATE TABLE IF NOT EXISTS runs(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, source TEXT, ok INTEGER, count INTEGER, ms INTEGER, err TEXT);
   CREATE TABLE IF NOT EXISTS alerts(id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT, value TEXT, enabled INTEGER DEFAULT 1);
+  CREATE TABLE IF NOT EXISTS snapshots(day TEXT PRIMARY KEY, ts INTEGER, backfill INTEGER, stats TEXT, data BLOB);
   CREATE TABLE IF NOT EXISTS notifications(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, alert_id INTEGER, ref TEXT, title TEXT, body TEXT, read INTEGER DEFAULT 0, UNIQUE(alert_id, ref));
   CREATE TABLE IF NOT EXISTS logs(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, msg TEXT);`);
   if (!all('SELECT 1 FROM alerts').length) { run("INSERT INTO alerts(type,value) VALUES('score','70')"); run("INSERT INTO alerts(type,value) VALUES('funding','50')"); }
@@ -84,7 +85,8 @@ async function recluster() {
   const res = E.cluster(sigs, cfg); lastCluster = { clusters: res.clusters, pool: res.pool, ms: Date.now() - t0 };
   run('DELETE FROM opps'); for (const o of res.opps) run('INSERT INTO opps VALUES(?,?,?,?)', [o.id, JSON.stringify(o), o.total, o.updated]);
   try { const all30 = all('SELECT id,source,kind,region,title,url,text,ts,engagement,weight,ind,meta FROM signals WHERE ts > ? OR source = ?', [Math.floor(Date.now() / 1000) - 60 * 86400, 'amazon_reviews']).map(r => ({ ...r, ...JSON.parse(r.meta || '{}'), meta: undefined }));
-    const dr = DIMS.run({ signals: all30, opps: res.opps, chain: getK('chain'), macro: getK('macro') }); setK('dims', { ...dr, at: Date.now() }); log(`机会维度：${dr.cards.length} 张卡片，${Object.values(dr.counts).filter(Boolean).length}/${dr.dims.length} 个维度有命中`); } catch (e) { log('维度引擎失败：' + e.message, 'error'); }
+    const dr = DIMS.run({ signals: all30, opps: res.opps, chain: getK('chain'), macro: getK('macro') }); setK('dims', { ...dr, at: Date.now() }); lastDims = dr; log(`机会维度：${dr.cards.length} 张卡片，${Object.values(dr.counts).filter(Boolean).length}/${dr.dims.length} 个维度有命中`); } catch (e) { log('维度引擎失败：' + e.message, 'error'); }
+  try { takeSnapshot({ opps: res.opps.map(o => ({ ...o, total: Math.min(100, o.total + 8 * Math.max(0, (lastDims?.oppDims?.[o.id]?.length || 1) - 1)) })), dims: lastDims }); } catch (e) { log('快照失败：' + e.message); }
   log(`语义聚类：${res.pool} 条信号 → ${res.clusters} 个簇 → ${res.opps.length} 个机会（相似度阈值 ${cfg.clusterSim}，${lastCluster.ms}ms）`);
 }
 function ws(id) { const r = all('SELECT json FROM workspace WHERE opp_id=?', [id])[0]; return r ? JSON.parse(r.json) : {}; }
@@ -110,7 +112,8 @@ function checkAlerts() {
     for (const [ref, title, body] of hits) { run('INSERT OR IGNORE INTO notifications(ts,alert_id,ref,title,body) VALUES(?,?,?,?,?)', [Date.now(), a.id, ref, title, body]);
       if (db.getRowsModified() && Notification.isSupported() && !process.env.SR_SHOT) new Notification({ title: '商机雷达 · ' + title, body }).show(); } }
 }
-function schedule() { clearInterval(timer); if (getCfg().autoRefresh) timer = setInterval(() => refresh({ due: true }), 15 * 60000); }
+let snapTimer; function dailySnap() { if (!all('SELECT 1 FROM snapshots WHERE day=?', [dayOf()]).length && !busy) recluster().then(() => save(true)).catch(e => log('每日快照失败：' + e.message)); }
+function schedule() { clearInterval(snapTimer); snapTimer = setInterval(dailySnap, 3600e3); clearInterval(timer); if (getCfg().autoRefresh) timer = setInterval(() => refresh({ due: true }), 15 * 60000); }
 function health(id) { const s = SOURCES[id], cfg = getCfg(); const rs = all('SELECT * FROM runs WHERE source=? ORDER BY id DESC LIMIT 10', [id]);
   if (s.unavailable) return { status: 'unavailable', label: '不可用', why: s.unavailable };
   if (s.key && !cfg[s.key]) return { status: 'nokey', label: '需配置 Key' };
@@ -124,6 +127,43 @@ function regionOf(s) { const t = s.title + ' ' + (s.text || '').slice(0, 300); c
 function regionCoverage(since) { const sigs = all('SELECT title,text,region,source,ind FROM signals WHERE ts>?', [since]); const m = Object.fromEntries(REGIONS.map(([k, n]) => [k, { key: k, name: n, signals: 0, sources: new Set(), inds: new Set() }]));
   for (const s of sigs) for (const r of regionOf(s)) { m[r].signals++; m[r].sources.add(s.source); if (s.ind) m[r].inds.add(s.ind); }
   return Object.values(m).map(r => { const s = r.sources.size; return { ...r, sources: s, inds: r.inds.size, status: r.signals >= 200 && s >= 8 ? 'good' : r.signals >= 50 && s >= 3 ? 'ok' : 'gap' }; }); }
+
+// ===== 每日快照 =====
+const dayOf = (ms = Date.now()) => new Date(ms).toLocaleDateString('sv-SE');
+const snapRow = day => { const r = all('SELECT * FROM snapshots WHERE day=?', [day])[0]; return r ? JSON.parse(zlib.gunzipSync(Buffer.from(r.data)).toString()) : null; };
+const prevSnap = day => { const r = all('SELECT day FROM snapshots WHERE day<? ORDER BY day DESC LIMIT 1', [day])[0]; return r ? snapRow(r.day) : null; };
+function kpisAt(endTs) { const since = endTs - 30 * 86400; const r = all('SELECT COUNT(*) n, COUNT(DISTINCT source) s, COUNT(DISTINCT ind) i FROM signals WHERE ts<=? AND ts>?', [endTs, since])[0]; return { signals: r.n, sources: r.s, industries: r.i }; }
+function takeSnapshot({ day = dayOf(), opps, dims, backfill = false, endTs = Math.floor(Date.now() / 1000) }) {
+  const prev = prevSnap(day), aligned = SN.align(opps, prev?.opps);
+  const s = SN.build({ day, opps: aligned, dims, kpis: kpisAt(endTs), prev, backfill });
+  run('INSERT OR REPLACE INTO snapshots VALUES(?,?,?,?,?)', [day, s.ts, backfill ? 1 : 0, JSON.stringify(s.stats), zlib.gzipSync(JSON.stringify(s))]);
+  if (!backfill && s.stats.newHigh) { const hi = s.opps.filter(o => s.diff.new.includes(o.id) && o.total >= 75);
+    for (const o of hi) run('INSERT OR IGNORE INTO notifications(ts,alert_id,ref,title,body) VALUES(?,?,?,?,?)', [Date.now(), -1, o.id + '@' + day, `每日快照：新高分机会 ${o.title}`, `${day} 首次进入榜单，评分 ${o.total}（≥75），行业 ${o.industryName || ''}`]);
+    if (Notification.isSupported() && !process.env.SR_SHOT) new Notification({ title: '商机雷达 · 每日快照', body: `${day} 新增 ${hi.length} 个高分机会` }).show(); }
+  log(`快照 ${day}${backfill ? '（回填）' : ''}：${s.stats.opps} 个机会，新增 ${s.stats.new}，跌出 ${s.stats.gone}`); return s.stats; }
+async function backfillSnapshots(days = 30) { const out = []; const today = new Date(); today.setHours(23, 59, 59, 0);
+  const minTs = all('SELECT MIN(ts) m FROM signals WHERE emb IS NOT NULL AND ts > ?', [Math.floor(Date.now() / 1000) - 400 * 86400])[0].m || 0;
+  for (let k = days; k >= 1; k--) { const end = new Date(today); end.setDate(today.getDate() - k); const endTs = Math.floor(end.getTime() / 1000), day = dayOf(end.getTime());
+    if (endTs < minTs) continue; if (all('SELECT 1 FROM snapshots WHERE day=? AND backfill=0', [day]).length) continue;
+    const rows = all('SELECT id,source,kind,region,title,url,text,ts,engagement,weight,ind,meta,emb FROM signals WHERE ts > ? AND ts <= ? AND emb IS NOT NULL', [endTs - 30 * 86400, endTs]);
+    if (rows.length < 50) continue;
+    const sigs = rows.map(r => { const m = JSON.parse(r.meta || '{}'); const b = r.emb; return { ...r, ...m, industry: undefined, vec: new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4), emb: undefined, meta: undefined }; });
+    const res = E.cluster(sigs, { ...getCfg(), now: endTs }); let dr = null;
+    try { dr = DIMS.run({ signals: sigs.map(s => ({ ...s, vec: undefined })), opps: res.opps, chain: getK('chain'), macro: getK('macro'), now: endTs }); } catch {}
+    out.push({ day, ...takeSnapshot({ day, opps: res.opps.map(o => ({ ...o, total: Math.min(100, o.total + 8 * Math.max(0, (dr?.oppDims?.[o.id]?.length || 1) - 1)) })), dims: dr, backfill: true, endTs }) });
+    send('progress', { id: 'backfill', state: 'running', msg: day }); await new Promise(r => setImmediate(r)); }
+  if (out.length && all('SELECT 1 FROM snapshots WHERE day=?', [dayOf()]).length) await recluster(); // 今日快照基于回填后的前一日重新比较
+  save(true); return out; }
+function snapPeriod(g, key) { const days = all('SELECT day FROM snapshots ORDER BY day').map(r => r.day).filter(d => SN.periodKey(d, g) === key);
+  const snaps = days.map(snapRow); const pk = SN.prevPeriod(key, g); const pdays = all('SELECT day FROM snapshots ORDER BY day').map(r => r.day).filter(d => SN.periodKey(d, g) === pk);
+  return { key, g, prevKey: pk, agg: snaps.length ? SN.aggregate(snaps) : null, prev: pdays.length ? SN.aggregate(pdays.map(snapRow)) : null, snaps: snaps.map(s => ({ day: s.day, backfill: s.backfill, stats: s.stats })), last: snaps[snaps.length - 1] || null, lists: snaps.length ? periodLists(snaps) : null }; }
+function periodLists(snaps) { const base = prevSnap(snaps[0].day), end = snaps[snaps.length - 1], bm = new Map((base?.opps || []).map(o => [o.id, o])), em = new Set(end.opps.map(o => o.id));
+  const pick = o => ({ id: o.id, alias: o.alias, title: o.title, total: o.total, rank: o.rank, industryName: o.industryName, dims: o.dims, ev: o.evidence?.[0] });
+  return { base: base?.day || null, end: end.day,
+    new: end.opps.filter(o => !bm.has(o.id)).slice(0, 30).map(pick),
+    up: end.opps.filter(o => bm.has(o.id)).map(o => ({ ...pick(o), delta: o.total - bm.get(o.id).total, rankDelta: bm.get(o.id).rank - o.rank })).sort((a, b) => b.delta - a.delta || b.rankDelta - a.rankDelta).slice(0, 20),
+    gone: (base?.opps || []).filter(o => !em.has(o.id)).slice(0, 30).map(pick),
+    stay: end.opps.filter(o => snaps.every(s => s.opps.some(x => x.id === o.id)) && bm.has(o.id)).slice(0, 30).map(pick) }; }
 function paperStats() { const now = Math.floor(Date.now() / 1000), d14 = now - 14 * 86400, d28 = now - 28 * 86400, MIN = 5;
   const rows = all("SELECT ind, kind, ts, engagement, source FROM signals WHERE ts>? AND ind IS NOT NULL", [now - 60 * 86400]); const m = {};
   const CIT = new Set(['openalex', 'semanticscholar', 'crossref', 'pubmed']); // 只有这些源的 engagement 是引用数
@@ -181,6 +221,14 @@ const H = {
   'coverage': () => coverage(), 'industries': () => INDUSTRIES,
   'macro:get': () => getK('macro'), 'macro:refresh': async () => { const m = await refreshMacro(); save(); return m; },
   'opps:list': () => getOpps(),
+  'snap:list': () => all('SELECT day, ts, backfill, stats FROM snapshots ORDER BY day').map(r => ({ ...r, stats: JSON.parse(r.stats) })),
+  'snap:get': (_, day) => snapRow(day),
+  'snap:take': async () => { await recluster(); save(true); return snapRow(dayOf()); },
+  'snap:backfill': async (_, n) => backfillSnapshots(n || 30),
+  'snap:period': (_, g, key) => snapPeriod(g, key),
+  'snap:report': async (_, g, key) => { const p = snapPeriod(g, key); if (!p.agg) return null; const md = SN.report(key, g, p.agg, p.prev, p.last ? [p.last, ...p.snaps.slice(0, -1).map(s => ({ ...s, opps: [] }))].reverse() : []);
+    const f = process.env.SR_EXPORT_DIR ? path.join(process.env.SR_EXPORT_DIR, `SignalRadar-${g}-${key}.md`) : (await dialog.showSaveDialog(win, { defaultPath: `SignalRadar-${g}-${key}.md` })).filePath; if (!f) return null; fs.writeFileSync(f, md); return f; },
+  'opp:history': (_, id) => { const pts = []; for (const r of all('SELECT day FROM snapshots ORDER BY day')) { const s = snapRow(r.day); const o = s.opps.find(x => x.id === id || x.alias === id); if (o) pts.push({ day: r.day, total: o.total, rank: o.rank, backfill: s.backfill }); } return { pts, first: pts[0]?.day || null }; },
   'dims:get': () => getK('dims') || { cards: [], matrix: {}, oppDims: {}, counts: {}, dims: DIMS.DIMS },
   'chain:get': () => ({ chain: getK('chain'), opps: getOpps().filter(o => o.chain).map(o => ({ id: o.id, title: o.title, total: o.total, industry: o.industry, chain: o.chain.code, noise: o.quality?.noise })) }),
   'chain:refresh': async () => { const c = await refreshChain(); save(); return c; },
@@ -224,6 +272,7 @@ app.whenReady().then(async () => {
     win.webContents.on('console-message', (e, l, m) => l >= 2 && console.log('[renderer]', m));
     if (!process.env.SR_NOFETCH) console.log(JSON.stringify(await refresh(process.env.SR_ONLY ? { only: process.env.SR_ONLY.split(',') } : {})));
     else if (process.env.SR_RECLUSTER) { await embedPending(); await recluster(); save(true); }
+    if (process.env.SR_BACKFILL) { const b = await backfillSnapshots(30); console.log('backfill', b.length); }
     await win.webContents.executeJavaScript('window.__reload && window.__reload()');
     for (const v of (process.env.SR_VIEWS || 'dashboard,detail,sources').split(',')) { const [view, tab] = v.split(':');
       await win.webContents.executeJavaScript(`window.__go('${view}', '${tab || ''}')`); await new Promise(r => setTimeout(r, 3000));
