@@ -383,3 +383,18 @@ Windows 包：`release/SignalRadar-Setup-3.1.0-x64.exe`（175,044,272 B）。分
 - `forecast7()`：仅用有效采集日；样本 <5 天直接拒绝；<14 天标 provisional。
 - 详情时间序列图：历史实线 + 外推虚线 + 上下限点线；文案标明 Holt、约 80% 经验放大区间。
 - 指标：E2E **23/23**；启动 1.41s / 2.04s；采集 30.3s（HN）。合理率不变。外推在样本不足时标「仅供参考」，不计入评分。
+
+## v3.4：中文与本地化深度
+**1. 竞品 / 源调研**
+- V2EX 经典 API `/api/topics/hot.json`、`/api/topics/latest.json` 无需登录（已接入）。新 API v2 需 Token。来源：https://github.com/jackwener/v2ex-digest/blob/main/v2ex-api.md
+- 36氪：公开 JSON `https://www.36kr.com/api/newsflash`（需浏览器 UA），官方 RSS 被反爬。来源：实测 200 + items；https://www.36kr.com/rss-center
+- RSSHub 公共实例 403，自建通道已在 v3.1 保留。
+
+**2. 开源**
+- GICS 中英对照：行业轴应保留 code、按语言显示名称（https://github.com/skysaint/gics-data）。
+
+**3. 反思**：英文模式下热力矩阵行业轴仍是中文；中文资讯源除投诉外偏弱；知乎/微博不可用（已在 UNAVAILABLE 标明）。
+
+**4. 实现**
+- 新增 `kr_flash`（36氪快讯公开 JSON，30 条/轮）。
+- 维度卡片增加 `sectorEn` / `industryNameEn`；热力矩阵在英文模式下用英文板块名和维度名。

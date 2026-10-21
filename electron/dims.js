@@ -128,7 +128,7 @@ function run({ signals: sigIn, opps, chain, macro, now = Date.now() / 1000 }) {
 
   // 多维加权：同一语义簇命中多个维度
   const byOpp = {}; for (const c of cards) if (c.oppId) (byOpp[c.oppId] ||= new Set()).add(c.dim);
-  for (const c of cards) { const k = c.oppId ? byOpp[c.oppId].size : 1; c.dimsHit = c.oppId ? [...byOpp[c.oppId]] : [c.dim]; c.multi = k; c.final = clamp(c.score + 8 * (k - 1)); c.sector = IND[c.industry]?.sector || '—'; c.sectorCn = IND[c.industry]?.sectorCn || '未分类'; c.industryName = IND[c.industry]?.cn || '未分类'; }
+  for (const c of cards) { const k = c.oppId ? byOpp[c.oppId].size : 1; c.dimsHit = c.oppId ? [...byOpp[c.oppId]] : [c.dim]; c.multi = k; c.final = clamp(c.score + 8 * (k - 1)); c.sector = IND[c.industry]?.sector || '—'; c.sectorCn = IND[c.industry]?.sectorCn || '未分类'; c.sectorEn = IND[c.industry]?.sectorEn || 'Unclassified'; c.industryName = IND[c.industry]?.cn || '未分类'; c.industryNameEn = IND[c.industry]?.en || 'Unclassified'; }
   cards.sort((a, b) => b.final - a.final);
   const matrix = {}; for (const c of cards) { const k = c.dim + '|' + c.sector; matrix[k] = (matrix[k] || 0) + 1; }
   return { ts: Date.now(), dims: DIMS, cards, matrix, oppDims: Object.fromEntries(Object.entries(byOpp).map(([k, v]) => [k, [...v]])), counts: Object.fromEntries(DIMS.map(([d]) => [d, cards.filter(c => c.dim === d).length])) };

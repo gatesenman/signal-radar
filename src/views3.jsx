@@ -1,4 +1,5 @@
 import { React, useEffect, useState, api, I, $M, L, PH, Chart, grid, axl, Empty } from './ui.jsx';
+import { getLang } from './shell21.jsx';
 const pct = x => (x * 100).toFixed(0) + '%';
 export function Chain({ open }) {
   const [d, setD] = useState(null), [sel, setSel] = useState(null), [busy, setBusy] = useState(false);
@@ -43,11 +44,11 @@ export function Dims({ open }) {
   if (err) return <><PH icon="stack-line" title="机会维度" /><div className="err"><I n="error-warning-line" /> 加载失败：{err}</div></>;
   if (!d) return <><PH icon="stack-line" title="机会维度" /><div className="skel" style={{ height: 300 }} /></>;
   if (!d.cards?.length) return <><PH icon="stack-line" title="机会维度" /><Empty text="还没有维度结果：完成一次「刷新数据」或「重新聚类」后，15 个维度引擎会自动运行。" /></>;
-  const secs = [...new Map(d.cards.map(c => [c.sector, c.sectorCn])).entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  const en = getLang() === 'en'; const secs = [...new Map(d.cards.map(c => [c.sector, en ? (c.sectorEn || c.sectorCn) : c.sectorCn])).entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])));
   const dl = d.dims, mx = Math.max(1, ...Object.values(d.matrix));
   const data = []; dl.forEach(([id], y) => secs.forEach(([s], x) => { const v = d.matrix[id + '|' + s] || 0; data.push([x, y, v || '-']); }));
   const opt = { tooltip: { formatter: p => `${dl[p.value[1]][1]} × ${secs[p.value[0]][1]}：${p.value[2] === '-' ? 0 : p.value[2]} 个机会` }, grid: { left: 150, right: 20, top: 10, bottom: 70 },
-    xAxis: { type: 'category', data: secs.map(s => s[1]), axisLabel: { rotate: 40, color: 'var(--mut)', fontSize: 11 }, splitArea: { show: true } }, yAxis: { type: 'category', data: dl.map(x => x[1]), inverse: true, axisLabel: { color: 'var(--mut)', fontSize: 11 } },
+    xAxis: { type: 'category', data: secs.map(s => s[1]), axisLabel: { rotate: 40, color: 'var(--mut)', fontSize: 11 }, splitArea: { show: true } }, yAxis: { type: 'category', data: dl.map(x => en && window.__dimEn?.[x[0]] ? window.__dimEn[x[0]] : x[1]), inverse: true, axisLabel: { color: 'var(--mut)', fontSize: 11 } },
     visualMap: { min: 0, max: mx, show: false, inRange: { color: ['var(--heat0)', 'var(--heat1)', 'var(--heat2)', 'var(--heat3)'] } }, series: [{ type: 'heatmap', data, label: { show: true, color: 'var(--tx)', fontSize: 10 } }] };
   const onCell = p => { setDim(dl[p.value[1]][0]); setSec(secs[p.value[0]][0]); };
   const list = d.cards.filter(c => (dim === 'all' || c.dim === dim) && (!sec || c.sector === sec) && (!multi || c.multi > 1));
@@ -61,7 +62,7 @@ export function Dims({ open }) {
     <div className="card" style={{ marginTop: 12 }}><h3><span><I n="list-check-2" /> 机会卡片（{list.length}）</span><span className="mut" style={{ fontSize: 11 }}>最终分 = 维度分 + 8×(命中维度数−1)</span></h3>
       {!list.length ? <Empty text="该筛选下没有机会。" /> : list.slice(0, 120).map(c => <div key={c.id} className="kpi" style={{ marginBottom: 8 }}>
         <div className="row" style={{ gap: 8, alignItems: 'center' }}><b style={{ fontSize: 18, width: 42 }}>{c.final}</b><div className="sp"><b>{c.title}</b>
-          <div className="mut" style={{ fontSize: 11 }}><I n={DN[c.dim]?.[2]} /> {c.dimName} · {c.industryName}{c.sub ? ' · ' + c.sub : ''}</div></div>
+          <div className="mut" style={{ fontSize: 11 }}><I n={DN[c.dim]?.[2]} /> {c.dimName} · {(en && c.industryNameEn) || c.industryName}{c.sub ? ' · ' + c.sub : ''}</div></div>
           {c.dimsHit?.length > 1 && <span className="tag o" title="同一语义簇命中多个维度">多维 ×{c.multi}：{c.dimsHit.map(x => DN[x]?.[1]).join(' / ')}</span>}
           {c.oppId && <button className="s" onClick={() => open(c.oppId)}><I n="arrow-right-up-line" /> 机会详情</button>}</div>
         <div style={{ fontSize: 12, margin: '6px 0' }}>{c.why}</div>

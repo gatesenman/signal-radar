@@ -149,6 +149,11 @@ add('gnews_sectors', { name: 'Google News 按行业查询（74 个 GICS 行业 �
   if (!ok) throw new Error('全部查询失败'); return out; });
 
 // ===== 中文源 =====
+// v3.4 36氪快讯公开 JSON（需浏览器 UA；官方 RSS 被反爬）。合规：只读公开接口，不绕过登录。
+add('kr_flash', { name: '36氪快讯（公开 JSON）', cat: '中文', kind: 'news', weight: .6, freq: 120, region: 'cn' }, async () => {
+  const d = await get('https://www.36kr.com/api/newsflash?per_page=30', { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SignalRadar/3.4)' } });
+  return (d?.data?.items || []).filter(x => x.title).map(x => ({ kind: 'news', region: 'cn', title: '36氪｜' + x.title, url: x.news_url || ('https://www.36kr.com/newsflashes/' + x.id), text: String(x.description || x.catch_title || '').slice(0, 400), ts: x.published_at || Math.floor(Date.now() / 1000), engagement: 0 }));
+});
 add('sspai', { name: '少数派', cat: '中文', kind: 'news', weight: .55, freq: 360, region: 'cn' }, rssFn('news', 'https://sspai.com/feed', { region: 'cn' }));
 add('ithome', { name: 'IT之家', cat: '中文', kind: 'news', weight: .5, freq: 120, region: 'cn' }, rssFn('news', 'https://www.ithome.com/rss/', { region: 'cn' }));
 add('tmtpost', { name: '钛媒体', cat: '中文', kind: 'news', weight: .6, freq: 180, region: 'cn' }, rssFn('news', 'https://www.tmtpost.com/rss.xml', { region: 'cn' }));
