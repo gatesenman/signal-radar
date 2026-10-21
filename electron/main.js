@@ -124,11 +124,16 @@ function regionOf(s) { const t = s.title + ' ' + (s.text || '').slice(0, 300); c
 function regionCoverage(since) { const sigs = all('SELECT title,text,region,source,ind FROM signals WHERE ts>?', [since]); const m = Object.fromEntries(REGIONS.map(([k, n]) => [k, { key: k, name: n, signals: 0, sources: new Set(), inds: new Set() }]));
   for (const s of sigs) for (const r of regionOf(s)) { m[r].signals++; m[r].sources.add(s.source); if (s.ind) m[r].inds.add(s.ind); }
   return Object.values(m).map(r => { const s = r.sources.size; return { ...r, sources: s, inds: r.inds.size, status: r.signals >= 200 && s >= 8 ? 'good' : r.signals >= 50 && s >= 3 ? 'ok' : 'gap' }; }); }
-function paperStats() { const now = Math.floor(Date.now() / 1000), d14 = now - 14 * 86400, d28 = now - 28 * 86400;
+function paperStats() { const now = Math.floor(Date.now() / 1000), d14 = now - 14 * 86400, d28 = now - 28 * 86400, MIN = 5;
   const rows = all("SELECT ind, kind, ts, engagement, source FROM signals WHERE ts>? AND ind IS NOT NULL", [now - 60 * 86400]); const m = {};
-  for (const r of rows) { const x = m[r.ind] ||= { r14: 0, r28: 0, cit14: 0, cit28: 0, prod: 0, papers: 0 }; if (r.kind === 'research') { x.papers++; if (r.ts > d14) { x.r14++; x.cit14 += r.engagement || 0; } else if (r.ts > d28) { x.r28++; x.cit28 += r.engagement || 0; } } if (r.kind === 'product' || r.kind === 'supply') x.prod++; }
-  return INDUSTRIES.map(i => { const x = m[i.code] || { r14: 0, r28: 0, cit14: 0, cit28: 0, prod: 0, papers: 0 };
-    return { code: i.code, cn: i.cn, sector: i.sectorCn, papers: x.papers, growth: x.r28 ? +((x.r14 / x.r28 - 1) * 100).toFixed(0) : null, citAccel: x.r14 && x.r28 ? +((x.cit14 / x.r14) - (x.cit28 / x.r28)).toFixed(1) : null, products: x.prod, gap: +Math.log2((x.papers + 1) / (x.prod + 1)).toFixed(2) }; }).sort((a, b) => b.gap - a.gap); }
+  const CIT = new Set(['openalex', 'semanticscholar', 'crossref', 'pubmed']); // 只有这些源的 engagement 是引用数
+  for (const r of rows) { const x = m[r.ind] ||= { r14: 0, r28: 0, v14: [], v28: [], prod: 0, papers: 0 }; if (r.kind === 'research') { x.papers++; const age = Math.max(1, (now - r.ts) / 86400), v = CIT.has(r.source) ? (r.engagement || 0) / age : null;
+      if (r.ts > d14) { x.r14++; v != null && x.v14.push(v); } else if (r.ts > d28) { x.r28++; v != null && x.v28.push(v); } } if (r.kind === 'product' || r.kind === 'supply') x.prod++; }
+  const avg = a => a.reduce((s, v) => s + v, 0) / a.length;
+  return INDUSTRIES.map(i => { const x = m[i.code] || { r14: 0, r28: 0, v14: [], v28: [], prod: 0, papers: 0 };
+    return { code: i.code, cn: i.cn, sector: i.sectorCn, papers: x.papers, r14: x.r14, r28: x.r28, lowSample: x.r14 < MIN || x.r28 < MIN,
+      growth: x.r14 >= MIN && x.r28 >= MIN ? +((x.r14 / x.r28 - 1) * 100).toFixed(0) : null,
+      citAccel: x.v14.length >= MIN && x.v28.length >= MIN ? +(avg(x.v14) - avg(x.v28)).toFixed(3) : null, products: x.prod, gap: +Math.log2((x.papers + 1) / (x.prod + 1)).toFixed(2) }; }).sort((a, b) => b.gap - a.gap); }
 function coverage() { const since = Math.floor(Date.now() / 1000) - 30 * 86400;
   const rows = all('SELECT ind, COUNT(*) n, COUNT(DISTINCT source) s FROM signals WHERE ts>? AND ind IS NOT NULL GROUP BY ind', [since]); const m = Object.fromEntries(rows.map(r => [r.ind, r]));
   const by = all('SELECT ind_by, COUNT(*) n FROM signals WHERE ts>? GROUP BY ind_by', [since]);
