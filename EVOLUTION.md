@@ -513,3 +513,18 @@ Windows 包：`release/SignalRadar-Setup-3.7.0-x64.exe`（175,049,369 B）。分
 **抽检**：模拟 2 个同行业观察+深研、1 个放弃；放弃项 −10→（修复后上限 ±8）；Top10 与原排序重合 5 个。
 **问题**：同行业仍占 Top10 的 7 个，偏强；还没有做「探索位」（例如固定留 2 个非偏好行业的位置）。
 **E2E**：23/23；启动 1.38s/1.28s；采集 28.4s。
+
+## v4.2 — 主动推送：每日简报
+**学习**
+- Readless 2026 年对 8 款 AI 简报工具的测评：区分「按文章逐条摘要」（Feedly Leo）和「跨来源写成一篇、带 [n] 引用的简报」（Kagi News、Readless Max）；后者才是真正的 briefing — https://www.readless.app/blog/best-ai-daily-news-briefing-tools-2026
+- Feedly 个人版没有邮件简报，只有企业版的 Automated Newsletters，个人用户只能借助 Zapier/IFTTT — https://www.readless.app/blog/feedly-email-digest-feature-2026
+- RSS 简报工具对比：RSSbrew（AGPL-3.0，自托管 + 日/周简报 feed）、n8n 社区周报模板（带去重）— https://www.readless.app/solutions/rss-feed-ai-digest
+**开源/许可证**：RSSbrew 是 AGPL-3.0，和本应用一起分发会触发传染性条款，所以只借鉴「简报 = 一个按日生成的文档」的形态，不引入代码。
+**反思**
+1. 错误假设：「提醒中心就是推送」——提醒是一条条零散通知，用户要的是早上一页纸。→ 每日快照后自动生成简报（Top5〔启用个性化时按个人分〕、正在爆发、你在观察的、多维卡片 Top3、采集健康），所有条目带 [n] 引用，末尾列出引用来源。高/低
+2. 不外发：只存到本机 `userData/briefs/YYYY-MM-DD.md`，并弹一条系统通知；不发邮件（发邮件需要用户另行授权）。高/零
+3. 采集健康写进简报：有源熔断时，第二天早上就能看到。中/低
+**实现**：`dailyBrief()`；IPC `brief:daily`（读取 / 立即生成）、`brief:daily:list`、`brief:daily:open`；总览页加「每日简报」卡片（前三条 + 全文 + 打开文件夹）；设置页加开关。E2E 新增 24（简报）、25（health:get）。
+**抽检**：E2E 环境生成的 2026-10-22 简报共 5 个 Top、5 个爆发、1 个观察项、3 张卡、15 条引用，每条引用都是采集到的真实 URL。
+**问题**：「为什么值得看」一句用的是规则模板（如「资本涌入：…」），不是 LLM 写的综述；标题仍是 c-TF-IDF 词串，可读性一般。
+**E2E**：26/26；启动 1.31s/1.29s；采集 29.1s。

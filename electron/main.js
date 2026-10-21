@@ -124,7 +124,23 @@ function checkAlerts() {
     for (const [ref, title, body] of hits) { run('INSERT OR IGNORE INTO notifications(ts,alert_id,ref,title,body) VALUES(?,?,?,?,?)', [Date.now(), a.id, ref, title, body]);
       if (db.getRowsModified() && Notification.isSupported() && !process.env.SR_SHOT) new Notification({ title: '商机雷达 · ' + title, body }).show(); } }
 }
-let snapTimer; function dailySnap() { if (!all('SELECT 1 FROM snapshots WHERE day=?', [dayOf()]).length && !busy) recluster().then(() => save(true)).catch(e => log('每日快照失败：' + e.message)); }
+// v4.2 每日简报：快照后自动生成跨来源一页简报（带 [n] 引用），存为 md 并弹系统通知；不外发
+function dailyBrief(day = dayOf()) { const opps = getOpps().filter(o => !o.quality?.noise && !o.stale), refs = [], cite = e => { if (!e?.url) return ''; let i = refs.findIndex(r => r.url === e.url); if (i < 0) { refs.push({ title: e.title, url: e.url }); i = refs.length - 1; } return `[${i + 1}]`; };
+  const key = o => o.personal?.on ? o.personal.score : o.total, top = [...opps].sort((a, b) => key(b) - key(a)).slice(0, 5);
+  const fresh = opps.filter(o => (o.metrics?.last3 || 0) > 0 && o.ts?.life?.stage === 'exploding').slice(0, 5), watch = opps.filter(o => o.watched && (o.metrics?.last3 || 0) > 0);
+  const H = getK('srcHealth', {}), open = Object.entries(H).filter(([, h]) => h.open).map(([id, h]) => `${SOURCES[id]?.name || id}（连续失败 ${h.fails} 次：${h.lastErr || ''}）`);
+  const cards = (getK('dims')?.cards || []).slice().sort((a, b) => (b.final || b.score) - (a.final || a.score)).slice(0, 3);
+  const L = [`# 商机雷达 · 每日简报 ${day}`, '', `> 自动生成于 ${new Date().toLocaleString('zh-CN', { hour12: false })}（本机时区）。${top[0]?.personal?.on ? '排序已按你的反馈个性化（个人分）。' : '尚未启用个性化（反馈不足 3 次），按综合评分排序。'}`, '', '## 今日最值得看'];
+  top.forEach((o, i) => L.push(`${i + 1}. **${o.title}**（${o.industryName || ''}）评分 ${o.total}${o.personal?.on ? ' · 个人分 ' + o.personal.score : ''}${o.mosaic ? ' · 体检分 ' + o.mosaic.score : ''} ${(o.evidence || []).slice(0, 2).map(cite).join('')}`, `   - ${(o.statement?.whyNow || o.summary || '').toString().slice(0, 120)}`));
+  L.push('', '## 正在爆发'); if (!fresh.length) L.push('- 今日无（生命周期判为爆发且近 3 天有新信号的主题为 0）'); fresh.forEach(o => L.push(`- ${o.title}：近 3 天 ${o.metrics.last3} 条 ${cite((o.evidence || [])[0])}`));
+  L.push('', '## 你在观察的'); if (!watch.length) L.push('- 无新动态'); watch.forEach(o => L.push(`- ${o.title}：近 3 天 ${o.metrics.last3} 条新信号 ${cite((o.evidence || [])[0])}`));
+  if (cards.length) { L.push('', '## 多维度卡片 Top 3'); cards.forEach(c => L.push(`- 【${c.dimName}】${c.title} ${cite((c.evidence || [])[0])}`)); }
+  L.push('', '## 采集健康'); L.push(open.length ? open.map(x => '- 熔断：' + x).join('\n') : '- 所有启用的数据源均未熔断');
+  L.push('', '## 引用'); refs.forEach((r, i) => L.push(`[${i + 1}] ${r.title || r.url} — ${r.url}`));
+  const md = L.join('\n'), dir = path.join(app.getPath('userData'), 'briefs'); fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, day + '.md'), md);
+  setK('lastBrief', { day, md }); if (Notification.isSupported() && !process.env.SR_SHOT) new Notification({ title: '商机雷达 · 每日简报', body: top[0] ? '今日首位：' + top[0].title.slice(0, 40) : '今日简报已生成' }).show();
+  send('brief', { day }); return { day, md, file: path.join(dir, day + '.md') }; }
+let snapTimer; function dailySnap() { if (!all('SELECT 1 FROM snapshots WHERE day=?', [dayOf()]).length && !busy) recluster().then(() => { save(true); if (getCfg().dailyBrief !== false) dailyBrief(); }).catch(e => log('每日快照失败：' + e.message)); }
 function schedule() { clearInterval(snapTimer); snapTimer = setInterval(dailySnap, 3600e3); clearInterval(timer); if (getCfg().autoRefresh) timer = setInterval(() => setTimeout(() => refresh({ due: true }), Math.random() * 120e3), 15 * 60000); }
 function health(id) { const s = SOURCES[id], cfg = getCfg(); const rs = all('SELECT * FROM runs WHERE source=? ORDER BY id DESC LIMIT 10', [id]);
   if (s.unavailable) return { status: 'unavailable', label: '不可用', why: s.unavailable };
@@ -276,6 +292,9 @@ const H = {
   'report:save': (_, { ids, fmt }) => saveDoc(reportMd(ids), '商机报告', fmt),
   'brief:md': (_, id) => decisionBrief(getOpps().find(x => x.id === id)),
   'brief:save': (_, { id, fmt }) => { const o = getOpps().find(x => x.id === id); return saveDoc(decisionBrief(o), 'DecisionBrief-' + o.title.replace(/[^\w\u4e00-\u9fa5]+/g, '_').slice(0, 30), fmt); },
+  'brief:daily': (_, gen) => gen ? dailyBrief() : (getK('lastBrief') || null),
+  'brief:daily:list': () => { const dir = path.join(app.getPath('userData'), 'briefs'); return fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => f.endsWith('.md')).sort().reverse() : []; },
+  'brief:daily:open': () => shell.openPath(path.join(app.getPath('userData'), 'briefs')),
   'stage:gate': (_, id) => stageGate(getOpps().find(x => x.id === id) || {}),
   'memo:save': (_, { id, fmt }) => { const o = getOpps().find(x => x.id === id); return saveDoc(icMemo(o), 'IC-Memo-' + o.title.replace(/[^\w\u4e00-\u9fa5]+/g, '_').slice(0, 30), fmt); },
   'share:export': async () => { const r = await dialog.showSaveDialog(win, { defaultPath: `商机雷达-共享-${new Date().toISOString().slice(0, 10)}.json` }); if (r.canceled) return null;

@@ -95,6 +95,10 @@ const waitFile = async (re, ms = 20000) => { const t0 = Date.now(); while (Date.
     const expectN = today.opps.filter(o => today.diff.new.includes(o.id) && o.total >= 75).length; expect(snapN >= expectN, `应有 ${expectN} 条快照提醒，实际 ${snapN}`); });
   // 重启：数据与本地偏好是否保留
   const watched = (await api('opps:list')).filter(o => o.watched).map(o => o.id); await app.close(); await launch();
+  await t('24 每日简报：生成 md（含引用段），总览卡片可见', async () => { const b = await api('brief:daily', true); expect(b && /每日简报/.test(b.md) && /## 引用/.test(b.md), '简报内容缺失'); expect(fs.existsSync(b.file), '简报文件未写入'); await nav('总览'); await page.waitForTimeout(500); expect(await page.locator('.brief').count(), '总览无简报卡片'); });
+  await t('25 采集健康：health:get 返回每个源的退避/熔断字段', async () => { const h = await api('health:get'); expect(Array.isArray(h) && h.length > 10 && 'open' in h[0] && 'okRate' in h[0], 'health 结构不对'); });
+  await t('26 融资页/宏观页为 DataTable，英文模式下表头无中文残留', async () => { await nav('资本与融资'); expect(await page.locator('.dt, table').count(), '融资页无表格'); await page.locator('.toolbar button[title*="English"]').click(); await page.waitForTimeout(500);
+    const hd = await page.locator('main thead, .main thead').allInnerTexts().catch(() => []); const txt = (hd.join(' ') || await page.locator('thead').first().innerText()); await page.locator('.toolbar button[title*="English"]').click(); expect(!/[\u4e00-\u9fa5]/.test(txt), '英文表头残留：' + txt.slice(0, 80)); });
   await t('23 重启后数据保留：观察、阶段、引导、保存的视图、快照', async () => {
     expect(!(await page.locator('.onb').count()), '重启后又出现引导'); const o = await api('opps:list'); expect(watched.every(id => o.find(x => x.id === id)?.watched), '观察列表丢失');
     expect(o.some(x => x.stage === 'screen'), '阶段丢失'); await nav('机会雷达'); expect(await page.locator('.fbar .chip a', { hasText: '高分' }).count() === 1, '保存的视图丢失'); expect((await api('snap:list')).length >= 20, '快照丢失'); });
