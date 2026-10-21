@@ -42,7 +42,7 @@ export function Sources({ cfg, setCfg, refresh, busy, prog, say }) {
   useEffect(() => { reload(); }, [busy]);
   const toggle = async id => { const dis = new Set(cfg.disabledSources || []); dis.has(id) ? dis.delete(id) : dis.add(id); const n = { ...cfg, disabledSources: [...dis] }; setCfg(await api.call('cfg:set', { disabledSources: n.disabledSources })); reload(); };
   const setW = async (id, w) => { setCfg(await api.call('cfg:set', { weights: { ...(cfg.weights || {}), [id]: +w } })); reload(); };
-  const color = s => ({ healthy: '#22c55e', degraded: '#f59e0b', down: '#ef4444', never: '#6b778c', off: '#6b778c', nokey: '#f59e0b', unavailable: '#ef4444' }[s] || '#6b778c');
+  const color = s => ({ healthy: 'var(--ok)', degraded: 'var(--warn)', down: 'var(--bad)', never: 'var(--mut)', off: 'var(--mut)', nokey: 'var(--warn)', unavailable: 'var(--bad)' }[s] || 'var(--mut)');
   const fq = m => !m ? '—' : m >= 1440 ? (m / 1440) + ' 天' : m >= 60 ? (m / 60) + ' 小时' : m + ' 分钟';
   const cnt = k => list.filter(s => s.status === k).length;
   return <><PH icon="database-2-line" title="数据源管理" sub={`${list.length} 个 · 健康 ${cnt('healthy')} · 不稳定 ${cnt('degraded')} · 故障 ${cnt('down')} · 需 Key ${cnt('nokey')} · 停用 ${cnt('off')} · 不可用 ${cnt('unavailable')}`}><button onClick={() => refresh()} disabled={busy}><I n="refresh-line" />立即采集</button><button className="s" onClick={() => refresh({ due: true })} disabled={busy}>仅到期</button></PH>
