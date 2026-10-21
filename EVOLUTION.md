@@ -230,3 +230,45 @@
 - 当前数据：有效采集 7 天，所以全部为初判，不影响分数。50 个非噪声簇中：爆发 7、下滑 8、见顶 4、样本期不足 30、疑似热潮 1。
 - 抽检有分类的前 10 个：合理 7（agent、kalshi、电池储能、tesla 见顶等），部分合理 2（Tenstorrent 融资新闻集中后回落），不合理 1（humanoid 的原始条数在上升，但占全库比例下降，被判为"下滑"）。这是"按占比归一化"口径带来的现象，已记录。
 - 指标：合理率约 86%（维度卡片不受影响；新增生命周期抽检 8/10，按"部分合理计 0.5"）；E2E **23/23**；启动 1.77s / 1.36s；采集 40.1s（HN）；包体积 —。
+
+## v3.0：主题命名与表示（深挖侧重点：话题表示、同义归并、受众 / 来源亲和）
+**1. 行业竞品学习**
+- **AlphaSense**：Smart Synonyms 会把关键词扩展到商业语境下的同义表达；情感按句子打分（−100…100，带置信度）；所有 AI 摘要都附原文出处。启示：主题词要做同义 / 词形归并，结论要能追溯到证据。
+  来源：https://help.alpha-sense.com/hc/en-us/articles/41638748605587-Smart-Synonyms 、https://help.alpha-sense.com/hc/en-us/articles/41711605431059-How-We-Calculate-Sentiment
+- **SparkToro**：Affinity 是相对、对数刻度的 1–100 分，衡量某个受众比平均水平"更多使用"某个来源的程度，不是占比。启示：来源的重要性应该用"相对全库的过度指数"来衡量，而不是只看绝对条数（与我们已有的"相对全库倍数"口径一致）。
+  来源：https://sparktoro.com/resources/videos/what-is-an-affinity-score 、https://sparktoro.com/blog/sparktoro-v2-is-finally-here-it-can-do-incredible-things-for-seo-content-marketing-pr-and-ad-targeting/
+- **Exploding Topics / Glimpse** 的话题都是完整短语（如 "denim purse"），不是断开的词片段。用户看到的是"可以拿去搜索的名字"。
+
+**2. 开源产品分析**
+- **BERTopic c-TF-IDF**（MIT）：
+  - 把每个簇视为一篇文档，tf 做 L1 归一化，idf 为 log(1 + 平均词数 / 词频)。
+  - `reduce_frequent_words` 对 tf 开平方，压低到处出现的高频词。
+  - 可以叠加 MMR 等多样性指标，避免同义词重复入选。
+  来源：https://maartengr.github.io/BERTopic/getting_started/ctfidf/ctfidf.html
+- **Top2Vec**（BSD-3）：主题词取与主题向量余弦最近的词，代表文档取最接近质心的文档。我们本来就用"最接近质心的信号"作为代表标题。
+  来源：https://github.com/ddangelov/Top2Vec 、https://github.com/ddangelov/Top2Vec/blob/master/LICENSE
+- 许可证：只借鉴公式和思路，在 JS 中自写实现，没有复制代码。
+
+**3. 反思**
+
+| 差距 / 错误 | 影响 | 成本 | 决策 |
+|---|---|---|---|
+| 标签里出现同一个词的不同词形，如「agent · agents · agentic」「robot · robots」 | 高（首屏可读性） | 低 | ✅ 词形归并 + MMR 去冗余 |
+| 中文按二元切词，导致「器人 · 机器」「际航」「床试」「源推」这类断片；前 30 个标签中约 8 个不可读 | 高 | 中 | ✅ 中文短语延展 |
+| 高频词抢占标签 | 中 | 低 | ✅ √tf（reduce_frequent_words） |
+| **自己的错误**：第一版做了中文二元两两拼接，结果 3 字片段绕过了模板词表，「的通知 · 北京市 · 于印发」升到 75 分并排到第 1；同时出现「何防误」「略石油」这类断片 | 高 | 低 | ✅ 撤回两两拼接，改为在成员标题中做左右延展（同一相邻字占 ≥80% 才延展，最长 8 字）；质量闸门对 ≥3 字的标签拆成二元再查模板词，并检查前 6 个主题词中模板词是否过半 |
+| 来源亲和（SparkToro 式）单独展示 | 低 | 中 | 延后 |
+
+**4. 实现**
+- `engine.js` 新增 `topicTerms()`：
+  - 英文词形归并：去复数后再去 -ic / -ing / -er 等后缀。
+  - √tf × idf 打分。
+  - MMR 式去冗余：与已选词共现 ≥80% 且互为子串或同词干的词不重复入选。
+  - 中文短语延展。
+  - 最后再做一次子串去重。
+- `qualityGate`：中文子片段也查模板词；对「X完 / 成X」这类「完成」断片判为空泛标签。
+- 效果（同一份库重新聚类，前 30 个非噪声簇）：
+  - 不可读或断片标签约 8 个 → 约 2 个（「如何防误食 · 分日化品包装高度」不完整；「agents · personal · important」偏弱）。
+  - 新的完整短语如「临床试验」「开源推理框架」「出口管制」「战略石油储备 · 原油库存」「机器人 · 破产 · 订单」。
+  - 非噪声簇 50 → 51。维度命中数基本不变（资本 2 → 3）。
+- 指标：合理率约 86%（维度卡片不变；标签可读性在前 30 个中从约 73% 升到约 93%）；E2E **23/23**；启动 1.64s / 1.38s；采集 32.0s（HN）；包体积 —。

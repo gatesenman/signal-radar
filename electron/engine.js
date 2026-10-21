@@ -56,7 +56,8 @@ function qualityGate(o) { const n = o.metrics.signals || 1, k = o.kinds || {}, w
   if (job > 0.6) why.push(`招聘帖占 ${Math.round(job * 100)}%，反映用人需求而非产品机会`);
   if (snap > 0.6) why.push(`榜单/下载量快照占 ${Math.round(snap * 100)}%，缺少时间序列`);
   if (o.sources.length <= 1) why.push('仅 1 个来源，未交叉验证');
-  const lab = String(o.title).split(' · '); if (lab.filter(w => GENERIC.has(w.toLowerCase())).length >= Math.min(2, lab.length)) why.push('主题标签空泛（多为模板/媒体词）');
+  const isG = w => { w = w.toLowerCase(); if (GENERIC.has(w)) return true; if (/^[\u4e00-\u9fa5]{3,}$/.test(w)) for (let i = 0; i < w.length - 1; i++) if (GENERIC.has(w.slice(i, i + 2))) return true; return /^[\u4e00-\u9fa5]{2,}$/.test(w) && /完$|^成/.test(w); };
+  const lab = String(o.title).split(' · '), all6 = (o.terms || []).slice(0, 6); if (lab.filter(isG).length >= Math.min(2, lab.length) || (all6.length >= 4 && all6.filter(isG).length / all6.length >= .5)) why.push('主题标签空泛（多为模板/媒体词）');
   o.quality = { noise: why.length > 0, reasons: why };
   if (why.length) { o.total = Math.round(50 + (o.total - 50) * Math.max(0.3, 1 - 0.3 * why.length)); o.summary = '【背景/噪声簇，已降权】' + why.join('；') + '\n' + o.summary; } }
 function baseline(sigs) { const g = { n: sigs.length, kind: {}, region: { cn: 0, us: 0, global: 0 }, daily: {} };
@@ -108,17 +109,21 @@ function series(sigs, G, now) { // 归一化日序列（cluster 当日占全局�
 
 // v3.0 主题命名（借鉴 BERTopic c-TF-IDF 的 reduce_frequent_words（√tf）与 MMR 多样性、Top2Vec 的"贴近质心"代表词；自写实现）
 // 1) 英文词形归并 agent/agents/agentic → agent；2) 中文二元片段拼接 机器+器人 → 机器人；3) √tf × idf；4) MMR：与已选词共现 ≥80% 的同义片段不重复入选
-const TOPIC_V3 = false;
-const stem = w => /^[a-z]/.test(w) && w.length > 4 ? w.replace(/(ically|ical|ic|ing|ers|er|es|s)$/, '') : w;
+const TOPIC_V3 = true, CN_MERGE = false; // 中文拼接实测会让 3 字片段绕过模板词表（「的通知·北京市·于印发」升到 75 分），关闭
+const stem = w => /^[a-z]/.test(w) && w.length > 4 ? w.replace(/(?<!s)s$/, '').replace(/(ically|ical|ic|ing|er)$/, '') : w;
 function topicTerms(sigs, df, N) {
   const occ = {}; sigs.forEach((s, i) => { for (const t of new Set(tokens(s.title))) (occ[t] ||= new Set()).add(i); });
   // 中文二元拼接：A=xy, B=yz 且共现 ≥80% → xyz
   const cn = Object.keys(occ).filter(t => /^[\u4e00-\u9fa5]{2}$/.test(t) && occ[t].size >= 2);
-  for (const a of cn) for (const b of cn) if (a !== b && occ[a] && occ[b] && a[1] === b[0]) { const inter = [...occ[a]].filter(i => occ[b].has(i)).length; if (inter >= .8 * Math.min(occ[a].size, occ[b].size)) { const m = a + b[1]; occ[m] = new Set([...occ[a]].filter(i => occ[b].has(i))); df[m] = Math.min(df[a] || 1, df[b] || 1); delete occ[a]; delete occ[b]; } }
+  if (CN_MERGE) for (const a of cn) for (const b of cn) if (a !== b && occ[a] && occ[b] && a[1] === b[0] && !GENERIC.has(a) && !GENERIC.has(b)) { const inter = [...occ[a]].filter(i => occ[b].has(i)).length; if (inter >= .8 * Math.min(occ[a].size, occ[b].size)) { const m = a + b[1]; occ[m] = new Set([...occ[a]].filter(i => occ[b].has(i))); df[m] = Math.min(df[a] || 1, df[b] || 1); delete occ[a]; delete occ[b]; } }
   const grp = {}; for (const [t, set] of Object.entries(occ)) { const k = stem(t); const g = grp[k] ||= { forms: {}, set: new Set(), df: 0 }; g.forms[t] = set.size; set.forEach(i => g.set.add(i)); g.df = Math.max(g.df, df[t] || 1); }
-  const cand = Object.values(grp).filter(g => g.set.size >= 2).map(g => ({ w: Object.entries(g.forms).sort((a, b) => b[1] - a[1] || a[0].length - b[0].length)[0][0], set: g.set, s: Math.sqrt(g.set.size / sigs.length) * Math.log(1 + N / g.df) })).sort((a, b) => b.s - a.s);
+  const cand = Object.values(grp).filter(g => g.set.size >= 2 && !Object.keys(g.forms).every(f => /^[\u4e00-\u9fa5]+$/.test(f) && /完$|^成|^的|^于/.test(f))).map(g => ({ w: Object.entries(g.forms).sort((a, b) => b[1] - a[1] || a[0].length - b[0].length)[0][0], set: g.set, s: Math.sqrt(g.set.size / sigs.length) * Math.log(1 + N / g.df) })).sort((a, b) => b.s - a.s);
   const out = []; for (const c of cand) { if (out.length >= 6) break; const red = out.some(o => { const inter = [...c.set].filter(i => o.set.has(i)).length; return (inter >= .8 * c.set.size && (o.w.includes(c.w) || c.w.includes(o.w) || stem(o.w) === stem(c.w))); }); if (!red) out.push(c); }
-  return out.map(c => c.w);
+  // 中文短语延展：对选中的中文片段，在成员标题中看左右相邻字，同一个字出现在 ≥80% 的位置就向外延展（最长 8 字），把「贷款基」补全为「贷款市场报价利率」这类完整词
+  const titles = sigs.map(s => String(s.title || ''));
+  const extend = w => { if (!/^[\u4e00-\u9fa5]+$/.test(w)) return w; for (let k = 0; k < 6 && w.length < 8; k++) { const L = {}, R = {}; let n = 0; for (const tt of titles) { let i = tt.indexOf(w); while (i >= 0) { n++; const l = tt[i - 1], r = tt[i + w.length]; if (l && /[\u4e00-\u9fa5]/.test(l)) L[l] = (L[l] || 0) + 1; if (r && /[\u4e00-\u9fa5]/.test(r)) R[r] = (R[r] || 0) + 1; i = tt.indexOf(w, i + 1); } } if (n < 2) break; const bl = Object.entries(L).sort((a, b) => b[1] - a[1])[0], br = Object.entries(R).sort((a, b) => b[1] - a[1])[0]; if (br && br[1] >= .8 * n) w = w + br[0]; else if (bl && bl[1] >= .8 * n) w = bl[0] + w; else break; } return w; };
+  const res = []; for (const c of out) { const w = extend(c.w); if (!res.some(r => r.includes(w) || w.includes(r))) res.push(w); }
+  return res;
 }
 function buildOpp(c, G, df, N, now, cfg, ctx) {
   const sigs = c.m; sigs.sort((a, b) => b.ts - a.ts);
