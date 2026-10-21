@@ -5,8 +5,8 @@ export function Detail({ cur, allOpps, upd, load, say, llmOn, setSel, tab, setTa
   const o = cur;
   const ai = async () => { setLd(true); try { await api.call('opp:llm', o.id); await load(); say('AI 分析完成'); } catch (e) { say('AI 分析失败：' + e.message.replace(/^Error invoking.*?: /, ''), 7000); } setLd(false); };
   const memo = async fmt => { const p = await api.call('memo:save', { id: o.id, fmt }); p && say('已导出：' + p); };
-  const TABS = [['overview', '概览', 'eye-line'], ['score', '评分依据', 'bar-chart-box-line'], ['market', '市场规模', 'pie-chart-line'], ['compete', '竞争格局', 'group-line'], ['econ', '单位经济', 'calculator-line'], ['moat', '护城河与风险', 'shield-line'], ['validate', '画布与验证', 'flask-line'], ['evidence', '证据链 ' + o.evidence.length, 'links-line']];
-  const T = { overview: DOverview, score: DScore, market: DMarket, compete: DCompete, econ: DEcon, moat: DMoat, validate: DValidate, evidence: DEvidence }[tab] || DOverview;
+  const TABS = [['report', '标准报告', 'file-list-3-line'], ['overview', '概览', 'eye-line'], ['score', '评分依据', 'bar-chart-box-line'], ['market', '市场规模', 'pie-chart-line'], ['compete', '竞争格局', 'group-line'], ['econ', '单位经济', 'calculator-line'], ['moat', '护城河与风险', 'shield-line'], ['validate', '画布与验证', 'flask-line'], ['evidence', '证据链 ' + o.evidence.length, 'links-line']];
+  const T = { report: DReport, overview: DOverview, score: DScore, market: DMarket, compete: DCompete, econ: DEcon, moat: DMoat, validate: DValidate, evidence: DEvidence }[tab] || DOverview;
   return <><div className="ph"><div><h1><I n="file-search-line" s={19} />{o.title} <span className="score">{o.total}</span> <Conf v={o.conf} /> {o.stale && <span className="tag o">本轮未再出现</span>}</h1>
     <div className="sub"><span className="tag">{o.sector} / {o.industryName}</span> {o.metrics.signals} 条信号 · {o.sources.length} 个来源 · 代表信号：<L u={o.rep.url}>{o.rep.title.slice(0, 70)}</L> · 分析：{o.analysisBy === 'rules' ? '规则引擎' : o.analysisBy}</div></div><span className="sp" />
     <select style={{ width: 220 }} value={o.id} onChange={e => setSel(e.target.value)}>{allOpps.map(x => <option key={x.id} value={x.id}>{x.total} · {x.title}</option>)}</select>
@@ -56,3 +56,26 @@ function DEvidence({ o, upd, say }) { const [note, setNote] = useState(o.notes |
     <div className="card"><h3><span><I n="sticky-note-line" /> 备注 / 讨论</span></h3><textarea rows="6" value={note} onChange={e => setNote(e.target.value)} placeholder="研究笔记…" /><button style={{ marginTop: 6 }} onClick={() => { upd(o.id, { notes: note }); say('已保存'); }}><I n="save-3-line" />保存备注</button>
       <div className="feed" style={{ marginTop: 8 }}>{o.comments.map((c, i) => <div key={i}><b>{c.by}</b> <span className="mut">{new Date(c.ts).toLocaleString('zh-CN')}</span><br />{c.text}</div>)}</div>
       <div className="row" style={{ marginTop: 6 }}><input value={cm} onChange={e => setCm(e.target.value)} placeholder="添加评论（随共享包导出）" /><button className="s" onClick={() => { if (!cm) return; api.call('cfg:get').then(c => upd(o.id, { comments: [...o.comments, { by: c.userName || '我', ts: Date.now(), text: cm }] })); setCm(''); }}><I n="send-plane-line" /></button></div></div></div>; }
+
+// v2.1 标准报告：摘要 / 市场 / 竞争 / 证据 / 风险 / 结论；每个数字旁标注出处（● 实测 ◇ 假设/估算）
+const M = ({ v, a, t: tip }) => <span className="num">{v}<span className={'prov ' + (a ? 'a' : 'm')} title={tip || (a ? '假设/模型估算：基于公开基准与规则推断，需验证' : '实测：直接来自采集信号或公开数据源')}>{a ? '◇' : '●'}</span></span>;
+function DReport({ o, open }) {
+  const S = [['sum', '摘要'], ['mkt', '市场'], ['cmp', '竞争'], ['ev', '证据'], ['risk', '风险'], ['vd', '结论']];
+  const tam = o.tam || {}, comp = o.competitors || [], risks = o.risks || [];
+  const verdict = o.total >= 75 && o.conf >= .6 ? ['推进深研', 'go'] : o.total >= 60 ? ['继续观察 / 补证据', 'watch'] : ['暂不推进', 'drop'];
+  const go = id => document.getElementById('rp-' + id)?.scrollIntoView({ behavior: 'smooth' });
+  return <div className="report grid" style={{ gridTemplateColumns: '160px 1fr', gap: 16 }}>
+    <div className="toc">{S.map(([k, n], i) => <a key={k} onClick={() => go(k)}>{i + 1}. {n}</a>)}<div className="mut" style={{ fontSize: 10, marginTop: 12 }}><span className="prov m">●</span> 实测　<span className="prov a">◇</span> 假设/估算</div></div>
+    <div>
+      <section id="rp-sum" className="card"><h3>1. 摘要</h3><p style={{ lineHeight: 1.8 }}>{o.summary}</p>
+        <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}><span>综合分 <M v={o.total} a t="规则评分：由实测信号指标加权计算，权重为产品假设" /></span><span>置信度 <M v={o.conf} a t="基于来源多样性与样本量的估算" /></span><span>信号 <M v={o.metrics?.signals} /></span><span>来源 <M v={o.sources?.length} /></span>{o.dimHits?.length > 0 && <span>命中维度 <M v={o.dimHits.length} />{o.dimBoost ? `（多维加权 +${o.dimBoost}）` : ''}</span>}</div></section>
+      <section id="rp-mkt" className="card"><h3>2. 市场</h3>{tam.tam || tam.value ? <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}>{['tam', 'sam', 'som'].filter(k => tam[k] != null).map(k => <span key={k}>{k.toUpperCase()} <M v={typeof tam[k] === 'number' ? '$' + (tam[k] / 1e9).toFixed(1) + 'B' : String(tam[k])} a={!(k === 'tam' && tam.source)} t={k === 'tam' && tam.source ? '自上而下：' + tam.source : 'SAM/SOM 为渗透率假设'} /></span>)}</div> : <p className="mut">暂无行业产出数据，市场规模见「市场规模」页的假设推算。</p>}
+        {tam.method && <p className="mut" style={{ fontSize: 12 }}>方法：{tam.method}</p>}</section>
+      <section id="rp-cmp" className="card"><h3>3. 竞争</h3>{comp.length ? <table><tbody>{comp.slice(0, 8).map((c, i) => <tr key={i}><td><b>{c.name || c.title}</b></td><td className="mut">{c.kind || c.source || ''}</td><td>{c.url && <L u={c.url}>来源</L>}</td></tr>)}</tbody></table> : <p className="mut">未在采集数据中发现直接竞品（<span className="prov m">●</span> 实测为 0，不代表市场上没有）。</p>}
+        {o.chain && <p style={{ fontSize: 12 }}>产业链：{o.chain.name} · 卡脖子节点 {o.chain.chokes?.length || 0}</p>}</section>
+      <section id="rp-ev" className="card"><h3>4. 证据（{o.evidence?.length || 0}）</h3>{(o.evidence || []).slice(0, 10).map((e, i) => <div key={i} style={{ fontSize: 12, marginBottom: 4 }}><span className="prov m">●</span> <L u={e.url}>{e.title}</L> <span className="mut">{e.source}</span></div>)}</section>
+      <section id="rp-risk" className="card"><h3>5. 风险</h3><table><thead><tr><th>风险</th><th>概率</th><th>影响</th><th>依据</th></tr></thead><tbody>{risks.map((r, i) => <tr key={i}><td>{r.name}</td><td><M v={r.p + '/5'} a /></td><td><M v={r.i + '/5'} a /></td><td className="mut" style={{ fontSize: 12 }}>{r.why}</td></tr>)}</tbody></table></section>
+      <section id="rp-vd" className="card verdict"><h3>6. 结论</h3><p><span className={'tag ' + (verdict[1] === 'go' ? 'g' : 'o')}>{verdict[0]}</span> 规则：综合分 ≥75 且置信度 ≥0.6 → 推进深研；≥60 → 观察补证据；否则暂不推进。<span className="prov a">◇</span> 结论是规则建议，需人工判断。</p>
+        {o.statement && <ul style={{ lineHeight: 1.8 }}><li>谁：{o.statement.who}</li><li>痛点：{o.statement.pain}</li><li>Why now：{o.statement.whyNow}</li><li>怎么做：{o.statement.how} <span className="prov a">◇</span></li></ul>}</section>
+    </div></div>;
+}

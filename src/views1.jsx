@@ -1,4 +1,5 @@
 import { React, useEffect, useState, api, I, D, KIND, CATC, STAGES, fmt, $M, Src, L, Bar, Conf, Ev, PH, Chart, radarOpt, grid, axl, Empty } from './ui.jsx';
+import { FilterBar, DataTable, applyF, F0 } from './shell21.jsx';
 export function Dash({ opps, stats, open, refresh, busy, oppCtx }) {
   const top = opps.filter(o => !o.quality?.noise).slice(0, 8), cats = (stats?.bySource || []).slice(0, 12).map(r => [r.source, r.n]), kinds = (stats?.byCat || []).map(r => [r.kind, r.n]), asym = opps.filter(o => o.asymmetry.length && !o.quality?.noise).slice(0, 6);
   if (!stats?.total) return <><PH icon="dashboard-3-line" title="总览" /><Empty refresh={refresh} busy={busy} /></>;
@@ -18,12 +19,21 @@ export function Signals({ open, refresh, busy, ind, inds }) {
     {!rows.length ? <Empty refresh={refresh} busy={busy} /> : <div className="card"><table><thead><tr><th>时间</th><th>来源</th><th>类型</th><th>行业</th><th>标题</th><th>热度</th></tr></thead><tbody>{rows.slice(page * 80, page * 80 + 80).map(r => <tr key={r.id} onClick={() => api.call('open:url', r.url)}><td className="mut">{fmt(r.ts)}</td><td><Src s={r.source} /></td><td><span className="tag n">{KIND[r.kind] || r.kind}</span></td><td>{r.ind ? <span className="tag" title={'打标方式：' + r.ind_by}>{IN[r.ind] || r.ind}</span> : '—'}</td><td><b>{r.title}</b></td><td>{Math.round(r.engagement || 0).toLocaleString()}</td></tr>)}</tbody></table>
       <div className="row" style={{ marginTop: 8 }}><button className="s" disabled={page === 0} onClick={() => setPage(p => p - 1)}><I n="arrow-left-s-line" /></button><span className="mut">第 {page + 1} 页</span><button className="s" disabled={rows.length <= (page + 1) * 80} onClick={() => setPage(p => p + 1)}><I n="arrow-right-s-line" /></button></div></div>}</>;
 }
-export function Radar({ opps, open, refresh, busy, oppCtx }) {
-  const [sort, setSort] = useState('total'), [hideNoise, setHN] = useState(true);
-  const rows = [...opps].filter(o => !hideNoise || !o.quality?.noise).sort((a, b) => (b[sort] || 0) - (a[sort] || 0) || b.total - a.total);
+export function Radar({ opps, open, refresh, busy, oppCtx, inds = [], upd }) {
+  const [hideNoise, setHN] = useState(true), [f, setF] = useState(() => ({ ...F0, ...JSON.parse(localStorage.getItem('radarF') || '{}') })), [dims, setDims] = useState([]);
+  useEffect(() => { api.call('dims:get').then(d => setDims(d?.dims || [])).catch(() => {}); }, []);
+  useEffect(() => localStorage.setItem('radarF', JSON.stringify(f)), [f]);
   if (!opps.length) return <><PH icon="radar-line" title="机会雷达" /><Empty refresh={refresh} busy={busy} /></>;
-  return <><PH icon="radar-line" title="机会雷达" sub={`${opps.length} 个主题簇 · 其中 ${opps.filter(o => !o.quality?.noise).length} 个通过质量闸门 · 右键打开上下文菜单`}><label className="row" style={{ fontSize: 12 }}><input type="checkbox" style={{ width: 14 }} checked={hideNoise} onChange={e => setHN(e.target.checked)} />隐藏背景/噪声簇（{opps.filter(o => o.quality?.noise).length}）</label><select value={sort} onChange={e => setSort(e.target.value)} style={{ width: 140 }}><option value="total">按综合评分</option><option value="conf">按置信度</option><option value="metrics.signals">按信号数</option></select></PH>
-    <div className="card"><table><thead><tr><th>评分</th><th>置信</th><th>机会</th><th>行业</th><th>信号/源</th><th>不对称</th><th>阶段</th></tr></thead><tbody>{rows.map(o => <tr key={o.id} onClick={() => open(o.id)} onContextMenu={e => oppCtx(e, o)}><td><span className="score">{o.total}</span></td><td><Conf v={o.conf} /></td><td><b>{o.title}</b>{o.quality?.noise && <span className="tag o" title={o.quality.reasons.join('；')}>噪声</span>}<div className="mut" style={{ fontSize: 11 }}>{o.theme}</div></td><td><span className="tag">{o.industryName}</span></td><td>{o.metrics.signals}/{o.sources.length}</td><td>{o.asymmetry.slice(0, 2).map((a, i) => <span key={i} className="tag p" title={a.desc}>{a.type}</span>)}</td><td>{STAGES.find(s => s[0] === o.stage)?.[1]}</td></tr>)}</tbody></table></div></>;
+  const sectors = [...new Map(inds.map(i => [i.sector, i.sectorCn])).entries()], DN = Object.fromEntries(dims.map(d => [d[0], d[1]])), SN = Object.fromEntries(STAGES.map(s => [s[0], s[1]]));
+  const rows = applyF(opps, f).filter(o => !hideNoise || !o.quality?.noise).map(o => ({ ...o, __ctx: e => oppCtx(e, o) }));
+  return <><PH icon="radar-line" title="机会雷达" sub={`${opps.length} 个主题簇 · ${opps.filter(o => !o.quality?.noise).length} 个通过质量闸门 · 多维命中加权 +8/维 · 右键打开菜单`}><label className="row" style={{ fontSize: 12 }}><input type="checkbox" style={{ width: 14 }} checked={hideNoise} onChange={e => setHN(e.target.checked)} />隐藏背景/噪声簇</label></PH>
+    <FilterBar f={f} setF={setF} sectors={sectors} dims={dims} />
+    <div className="card"><DataTable name="radar" rows={rows} onRow={r => open(r.id)} cols={[
+      { k: 'total', n: '评分', w: 60, r: r => <span className="score" title={r.dimBoost ? `含多维加权 +${r.dimBoost}` : ''}>{r.total}</span> }, { k: 'conf', n: '置信', w: 70, r: r => <Conf v={r.conf} /> },
+      { k: 'title', n: '机会', r: r => <><b>{r.title}</b>{r.quality?.noise && <span className="tag">背景簇</span>}<div className="row" style={{ gap: 4, flexWrap: 'wrap', marginTop: 2 }}>{(r.dimHits || []).map(d => <span key={d} className="tag o" style={{ fontSize: 10 }}>{DN[d] || d}</span>)}</div></> },
+      { k: 'industryName', n: '行业', w: 130 }, { k: 'n', n: '信号', w: 60, v: r => r.n ?? r.signals?.length ?? r.count }, { k: 'dimHits', n: '维度数', w: 60, v: r => (r.dimHits || []).length },
+      { k: 'asym', n: '不对称', w: 60, v: r => r.asymmetry?.length || 0 }, { k: 'stage', n: '阶段', w: 60, v: r => SN[r.stage] || r.stage }]}
+      batch={[['star-line', '加入观察', ids => ids.forEach(id => upd(id, { watched: true }))], ['filter-3-line', '移到初筛', ids => ids.forEach(id => upd(id, { stage: 'screen' }))], ['close-circle-line', '放弃', ids => ids.forEach(id => upd(id, { stage: 'drop' }))]]} /></div></>;
 }
 export function Asym({ opps, open }) {
   const rows = opps.filter(o => o.asymmetry.length).sort((a, b) => Math.abs(b.asymMetrics.cnUs.value) - Math.abs(a.asymMetrics.cnUs.value));
