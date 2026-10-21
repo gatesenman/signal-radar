@@ -1,6 +1,6 @@
 # 商机雷达 周报：W2026-10-19
 
-> 快照 3 天（含回填快照：按信号发布时间重算，标记为「回填」） · 生成于 2026/10/21 21:30:39
+> 快照 3 天（含回填快照：按信号发布时间重算，标记为「回填」） · 生成于 2026/10/21 21:56:28
 
 ## 关键指标
 
@@ -9,7 +9,7 @@
 | 新增机会 | 80 | 37 | 116% |
 | 出现过的机会 | 115 | 46 | 150% |
 | Top10 平均分 | 64.7 | 62.4 | 4% |
-| 信号库规模 | 8349 | 3317 | 152% |
+| 信号库规模 | 8358 | 3317 | 152% |
 
 ## Top 机会
 
@@ -51,12 +51,12 @@
 
 ## 期末变化（2026-10-21）
 
-新增 28 · 上升 8 · 下降 30 · 跌出榜单 33
+新增 28 · 上升 7 · 下降 29 · 跌出榜单 33
 
 - 新：**方案 · 印发 · 施方**（69） — [CBB 2026圆满收官｜500㎡展位见证万世德智能包装实力 - 中国日报网](https://news.google.com/rss/articles/CBMifEFVX3lxTE54RHEtOHNRS1RQaDIxWEFfOWVGSzBqUjQ1c3hrSGZsLUtZeEpZUFVfNDZGc3IyZVV0S0hjMjNQd0J1UmtLMTNGVXRsR3BycmlwbHRWOVhQVjdKU01QdTQzeTladDg5WlI1MFNuMVdXcnh0Vkw3THNOUjR5REo?oc=5)
 - 新：**agents · personal · agent**（62） — [数字造星时代来临，流水线式AI艺人能挣到谁的钱？](https://www.tmtpost.com/8176501.html)
 - 新：**智能 · 研究 · 全球**（59） — [以综合改革破局开路 书写高等教育强国建设新篇章 - 中国教育新闻网](https://news.google.com/rss/articles/CBMidEFVX3lxTFByVUNyeGxWMG5BYlI0WEx6c3c4eDV4M0Y1ckRDUWlVdmtVYjI0ZVZQTm1iVVBzZ0Y2RV82X0t0dzJUdDdEN3Y4bjU2OWtBdWlKbXVsRWUxVEZYeXdfT2dvTmNpWDF3QXJlZWc0OHp5R3U4aHpo?oc=5)
-- 新：**depop · clothes · sell**（55） — [App Store US 免费榜 #14：Depop - Buy & Sell Clothes（Depop Ltd）](https://apps.apple.com/us/app/depop-buy-sell-clothes/id518684914)
+- 新：**depop · clothes · sell**（56） — [App Store US 免费榜 #14：Depop - Buy & Sell Clothes（Depop Ltd）](https://apps.apple.com/us/app/depop-buy-sell-clothes/id518684914)
 - 新：**动驾 · 自动 · 驾驶**（55） — [华为靳玉志：以真实数据建立用户信任，是自动驾驶规模化商用落地的关键](https://www.ithome.com/1/016/031.htm)
 - 新：**融资 · 亿元 · yuan**（55） — [伊塔动力完成超亿元种子轮和种子+轮融资，投资方包括银河通用、傅利叶 - 新京报](https://news.google.com/rss/articles/CBMiZEFVX3lxTE90Ymk0b1IyS1J0TnByb2tLdUwtRHlzcXc0QnhUWlFWOG4yekpiNHI4S3pJeFhGZDdNQkc3WXJrZjhlU0tVQ3FkVmJvanJGb29mWXBKUlh2YkhTNWQySV9sQ0FvMjE?oc=5)
 - 新：**kalshi · football · trade**（54） — [App Store US 免费榜 #10：Kalshi: Trade Football & more（KalshiEX ](https://apps.apple.com/us/app/kalshi-trade-football-more/id1632713844)
