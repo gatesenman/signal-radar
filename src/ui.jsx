@@ -1,7 +1,7 @@
 import ICONS from './icons.js';
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as echarts from 'echarts';
-import logo from '../build/icon.png';
+import logo from '../build/icon.svg';
 export const api = window.api;
 export const D = { market: '市场规模', growth: '增长动能', competition: '竞争(反向)', moat: '可防御性', monetization: '变现清晰度', fit: '创始人匹配' };
 export const C = { segments: '客户细分', problem: '问题', value: '价值主张', solution: '解决方案', channels: '渠道', revenue: '收入来源', costs: '成本结构', metrics: '关键指标', advantage: '壁垒/不公平优势' };
