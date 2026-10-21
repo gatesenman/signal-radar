@@ -4,7 +4,15 @@ const EN = { 总览: 'Overview', 信号流: 'Signals', 机会雷达: 'Radar', �
   发现: 'Discover', 筛选: 'Screen', 研究: 'Research', 验证: 'Validate', 决策: 'Decide', 跟踪: 'Track', 工具: 'Tools', 立即采集: 'Collect now', 重新聚类: 'Re-cluster', 报告: 'Report', 就绪: 'Ready', 采集中: 'Collecting', 搜索: 'Search', 初筛: 'Screen', 深研: 'Deep dive', 立项: 'Go', 放弃: 'Drop' };
 let LANG = localStorage.getItem('lang') || 'zh';
 export const t = s => (LANG === 'en' && EN[s]) || s;
-export const setLang = l => { LANG = l; localStorage.setItem('lang', l); };
+import { EXACT, PHRASES } from './i18n-en.js';
+// 英文版正文：遍历文本节点，整句命中词典则替换，否则做短语替换；MutationObserver 跟随渲染（原文存进 __zh，切回中文时还原）
+const HAN = /[\u4e00-\u9fa5]/; let obs = null;
+const trNode = n => { const raw = n.__zh ?? n.nodeValue; if (!HAN.test(raw)) return; const s = raw.trim(); let out = EXACT[s] ? raw.replace(s, EXACT[s]) : raw; if (out === raw) for (const [a, b] of PHRASES) if (out.includes(a)) out = out.split(a).join(b); if (out !== raw) { n.__zh = raw; if (n.nodeValue !== out) n.nodeValue = out; } };
+const walk = root => { const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) trNode(n); root.querySelectorAll?.('[placeholder],[title]').forEach(el => { for (const a of ['placeholder', 'title']) { const v = el.getAttribute(a); if (v && HAN.test(v) && EXACT[v.trim()]) el.setAttribute(a, EXACT[v.trim()]); } }); };
+const restore = () => { const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) if (n.__zh != null) { n.nodeValue = n.__zh; delete n.__zh; } };
+export function applyLang(l) { document.documentElement.lang = l === 'en' ? 'en' : 'zh'; if (l === 'en') { walk(document.body); if (!obs) { obs = new MutationObserver(ms => { obs.disconnect(); for (const m of ms) { if (m.type === 'characterData') { delete m.target.__zh; trNode(m.target); } m.addedNodes.forEach(x => x.nodeType === 3 ? trNode(x) : x.nodeType === 1 && walk(x)); } obs.observe(document.body, { childList: true, subtree: true, characterData: true }); }); obs.observe(document.body, { childList: true, subtree: true, characterData: true }); } } else { obs?.disconnect(); obs = null; restore(); } }
+export const setLang = l => { LANG = l; localStorage.setItem('lang', l); setTimeout(() => applyLang(l), 0); };
+if (LANG === 'en') setTimeout(() => applyLang('en'), 500);
 export const getLang = () => LANG;
 export const applyTheme = th => { document.documentElement.dataset.theme = th; localStorage.setItem('theme', th); };
 applyTheme(localStorage.getItem('theme') || 'dark');
