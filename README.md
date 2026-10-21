@@ -1,49 +1,52 @@
-# 商机雷达 Signal Radar（完整版 v1.0）
+# 商机雷达 Signal Radar 2.0
 
-AI 创业机会发现桌面应用：采集全球公开实时信号 → 存入本地 SQLite → 跨源主题聚类 → VC 六维评分 → 不对称信息、商业模式画布、反方观点、验证工作流 → 看板、提醒、报告、共享。
-**没有配置 LLM 时全部功能由规则引擎完成**；在「设置」中填写 OpenAI 兼容 Key 或 Ollama 地址后，「AI 深度分析」生效。
+AI 创业机会发现桌面应用：从 80+ 个全球公开数据源采集信号，在本机做语义聚类和可解释评分，输出机会陈述、TAM/SAM/SOM、竞争格局、Why Now、产业链卡脖子分析和投委会备忘录。所有结论都附来源链接，假设会明确标注。
 
-## 技术栈与选型说明
-Electron 33 + React 18 + ECharts 5 + sql.js（SQLite/WASM）+ Vite。
-没选 Tauri 2 的原因：构建机缺少 WebKitGTK 开发库和 pkg-config（要 sudo apt 装系统包），并且要编译数百个 crate；另外 Tauri 在 Linux/Windows/mac 上用的是三套不同的系统 WebView，ECharts 渲染和截图验证都不好统一。Electron 的离线缓存在本机就有，可以直接打出 AppImage，并在 xvfb 下用真实数据截图验证。sql.js 不需要编译原生模块，同一份代码在三个平台都能跑。
+## Windows 安装
+1. 下载 `SignalRadar-Setup-2.0.0-x64.exe`（安装版）或 `SignalRadar-2.0.0-win.zip`（免安装，解压后运行 `SignalRadar.exe`）。
+2. **安装包未做代码签名**，Windows SmartScreen 会提示"Windows 已保护你的电脑"：点击 **更多信息 → 仍要运行**。部分杀毒软件可能需要手动放行。
+3. 安装向导可以选择安装目录。数据保存在 `%APPDATA%\signal-radar`（SQLite 数据库、CC-NEWS 缓存）。
+4. 系统要求：Windows 10/11 x64，内存 4GB 以上，磁盘 1GB 以上。语义嵌入模型已内置（离线可用，约 130MB），首次采集需要联网。
 
-## 功能模块
-| 模块 | 说明 |
-|---|---|
-| 多源信号采集 | 12 个免费、不需要 key 的源，外加 3 个需 key 的源（见下）；并发采集，遇到 429 会退避重试，每次运行记录日志 |
-| 信号流 | 全部原始信号，支持搜索和按来源筛选，可点开原文 |
-| 机会雷达 | 用 n-gram 做跨源聚类得到主题，气泡图（竞争 × 增长）+ 带筛选的列表 |
-| 机会详情 | 六维雷达图、判断摘要、信号构成、商业模式画布（9 格）、红队反方观点、验证清单、相关融资、证据链（每条带原文链接）、备注与评论 |
-| VC 六维评分 | 市场规模 / 增长动能（近 3 天对比前 7 天）/ 竞争（反向）/ 可防御性 / 变现清晰度 / 创始人匹配（来自设置里的技能），再加跨源共振和新颖度；LLM 可在规则分基础上 ±15 修正 |
-| 不对称信息 | 地域差（中文源 vs 英文源）、技术→应用、需求→供给（痛点词）、人才流向（招聘）、资本→认知（融资多、讨论少） |
-| 融资动态 | 从新闻标题里抽取公司、金额、轮次，配图表；配置 Crunchbase Key 后可获取结构化轮次 |
-| 看板 | 发现 / 研究 / 验证 / 立项 / 放弃，可拖拽；推进过的机会会持久保留 |
-| 验证工作流 | 每个实验有状态、结果和记录，可增删；系统按结果给出建议：立项、继续验证或放弃 |
-| 机会对比 | 双雷达叠加 + 指标对比表 |
-| 提醒 | 规则：评分阈值、关键词、融资金额、观察中的机会；采集后检查，命中发系统通知；可设定时自动采集 |
-| 导出报告 | 支持 Markdown / HTML / PDF，内容含评分、画布、反方观点、验证清单和证据链接 |
-| 共享协作 | 导出 JSON 共享包（不含 Key）；对方导入后合并：备注追加，评论去重 |
-| 设置 | LLM（OpenAI 兼容 / Ollama，带测试连接）、关键词、技能、采集间隔、各源的 Key |
+Linux：`SignalRadar-2.0.0.AppImage`，执行 `chmod +x` 后直接运行。
 
-## 数据源（2026-10-21 在构建机上实测）
-免费、不需要 key：Hacker News Algolia ✓、GitHub Search ✓（没有 token 时每分钟 10 次）、Lobsters ✓、Product Hunt RSS ✓、Reddit RSS ✓（r/startups、SaaS、Entrepreneur、SideProject、smallbusiness）、TechCrunch RSS ✓、Google News RSS ✓、Stack Overflow ✓、V2EX ✓、RemoteOK 招聘 ✓、GDELT ⚠（限流严，时好时坏）、arXiv ⚠（短时间请求太多会 429）。
-需要 key（在设置里填）：X API v2 Recent Search、Product Hunt GraphQL、Crunchbase v4。这三个已经写了接入代码，但没有 key，未实测。
+## 界面
+- 桌面软件风格：自绘标题栏（最小化/最大化/关闭）、菜单栏（文件/视图/分析/工具/帮助）、工具栏（采集、聚类、行业筛选、报告、IC 备忘录）、可折叠侧边栏、状态栏、右键菜单。
+- 图标使用 Remix Icon（Apache-2.0，离线打包）；应用图标见 `build/icon.png` 和 `build/icon.ico`。
+- 快捷键：Ctrl+R 采集 · Ctrl+K 搜索 · Ctrl+B 侧边栏 · Ctrl+1…9 切换视图 · Ctrl+E 报告 · Ctrl+M IC 备忘录 · Ctrl+, 设置 · F1 快捷键 · Esc 关闭菜单。
 
-## 运行与构建
-```bash
-npm install            # 需要 Node 18+
-npm start              # 构建前端并启动
-npm run pack:linux     # → release/SignalRadar-1.0.0.AppImage、tar.gz
-npm run pack:win       # 在 Windows 上运行 → release/*.exe（NSIS 安装包）
-npm run pack:mac       # 在 macOS 上运行 → release/*.dmg（未签名，首次打开要右键→打开，或执行 xattr -cr）
+## 视图
+总览、信号流、机会雷达（质量闸门隐藏噪声簇）、机会详情（概览/评分依据/市场规模/竞争格局/单位经济/护城河与风险/画布与验证/证据链）、不对称信息、资本与融资、行业覆盖度（GICS 74 子行业 + 10 个国家/地区）、产业链、论文与统计、宏观与贸易、看板、验证工作流、对比、提醒、数据源、报告与 IC 备忘录、共享、日志、设置。
+
+## 分析方法
+- **语义聚类**：本地 ONNX 运行 `paraphrase-multilingual-MiniLM-L12-v2`（中英跨语言），做 leader 聚类（余弦阈值 0.6），用 c-TF-IDF 生成标签。
+- **可解释评分**：六维评分（市场、增长、竞争、护城河、变现、创始人匹配），每一维给出依据、置信度和证据。时间序列按"主题信号 / 当日全库信号"（‰）归一化，计算速度和加速度，并识别一次性热点和季节性。综合分 = 50 + (加权分 − 50) × (0.55 + 0.45 × 置信度)。
+- **质量闸门**：以政策公告、招聘或榜单为主，或只有单一来源、标签空泛的簇会被降权，并标注原因。
+- **TAM**：
+  - 自上而下优先用 OECD STAN（美国行业总产出）+ Eurostat SBS（EU27 营业额），通过 GICS→ISIC/NACE 映射得到行业规模。没有映射的行业回退到世界银行 GDP × 产业占比。
+  - 细分比例和汇率是假设。自下而上（客户数 × ARPU）全部是假设，可以修改。
+- **产业链**：12 条产业链，按上/中/下游节点组织：
+  - HS6 节点用 OEC/BACI 计算出口国份额、HHI 和同比，并用 UN Comtrade 交叉核对中国出口。
+  - 矿产节点用 USGS MCS 2025 的世界产量数据。
+  - 单一国家份额 ≥50% 或 HHI ≥2500 的节点记为卡脖子/高集中，作为不对称信号挂到同行业的机会上。
+- **论文指标**：按行业统计论文增速（近 14 天 vs 前 14 天）、引用加速度、论文→产品转化落差 log2((论文+1)/(产品+1))。
+- **不对称信息**：中美热度差、技术-产品落差、需求/供给比、资本/认知比、人才流向（与全库基线比较的 log2 值），以及产业链卡脖子。
+- **Common Crawl**：CC-NEWS 用内置的 Node 流式 WARC 解析器（不依赖 Python warcio），可以设置每日文件数、单文件读取上限和磁盘缓存上限。CDX 按 TLD 统计块数、与上一期索引对比，抽样新域名和 /pricing、/careers 页面，遇 503 指数退避。
+- 未配置 LLM 时使用规则和模板。配置 OpenAI 兼容接口或 Ollama 后，可以做"AI 深度分析"。
+
+## 数据源（2026-10-21 实测）
+数据源页实时显示每个源的状态、可信度权重、频率和成功率。以下源因为反爬、需要登录或没有 API 而不可用，已在界面中如实标注：36氪 RSS、虎嗅、IT桔子、微博热搜、Google Play、G2、Papers with Code、Trends CN、a16z 原站、gov.cn、中国政府采购网搜索页、Google Patents、OECD ICIO、FAOSTAT API、中国海关统计、国家统计局、UNIDO、SSRN、CNKI、万方。
+
+需要 Key 的源（在设置中填写）：FRED API、OpenCorporates、Companies House、PatentsView、SAM.gov、X、Product Hunt API、Crunchbase、美国 Census（国际贸易、CBP/ASM）、日本 e-Stat、CORE、Semantic Scholar（可选）。
+
+## 开发与构建
 ```
-Windows 和 mac 建议在各自系统上构建（electron-builder 不能跨平台打 dmg；Windows 安装包在 Linux 上打需要 wine）。
-数据库位置：Linux `~/.config/signal-radar/`，Windows `%APPDATA%\signal-radar\`，mac `~/Library/Application Support/signal-radar/`。
-
-截图模式：`SR_SHOT=./shots SR_VIEWS=dashboard,detail,radar npm start`（会先做一次真实采集，再逐页截图）。
-
-## 已知限制
-- 聚类基于关键词 n-gram，主题名偏技术词（比如 "php security"），不等于完整的商业机会表述。配置 LLM 后可以生成更好的机会名称和判断。
-- 评分是用公开信号的数量和分布推算的代理指标，不代表真实的市场规模。
-- 融资信息靠标题正则抽取，可能漏抓或误抓。
-- 协作靠文件导入导出，没有实时同步。
+npm install          # 注意：onnxruntime-node 自带 win32/linux/darwin 预编译二进制
+npx vite build
+npx electron .       # 开发运行
+npx electron-builder --win --x64     # Windows：NSIS 安装包 + zip（Linux 上构建需要 wine，用于 NSIS/rcedit）
+npx electron-builder --linux AppImage
+```
+- 打 Windows 包前需要准备 Windows 版 sharp：`npm pack @img/sharp-win32-x64@0.35.5`，解压到 `node_modules/@img/sharp-win32-x64`。
+- 嵌入模型放在 `models/`（通过 extraResources 打包）。Windows 包已剔除 CUDA、linux/darwin、arm64 二进制。
+- sql.js 是 WASM，没有原生模块；不使用 better-sqlite3。
