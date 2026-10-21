@@ -47,11 +47,38 @@
           "Name": "SignalRadar"
         }
       },
-      "icon": "build/icons"
+      "icon": "build/icons",
+      "files": [
+        "!node_modules/onnxruntime-node/bin/napi-v*/win32/**",
+        "!node_modules/onnxruntime-node/bin/napi-v*/darwin/**",
+        "!node_modules/@img/sharp-win32*/**",
+        "!**/*cuda*"
+      ]
     },
     "win": {
-      "target": "nsis",
-      "icon": "build/icon.ico"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "files": [
+        "!node_modules/onnxruntime-node/bin/napi-v*/linux/**",
+        "!node_modules/onnxruntime-node/bin/napi-v*/darwin/**",
+        "!node_modules/@img/sharp-linux*/**",
+        "!node_modules/@img/sharp-libvips-linux*/**",
+        "!**/*cuda*",
+        "!**/*tensorrt*"
+      ]
     },
     "mac": {
       "target": "dmg",
@@ -66,7 +93,15 @@
         "from": "models",
         "to": "models"
       }
-    ]
+    ],
+    "npmRebuild": false,
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "shortcutName": "商机雷达 SignalRadar",
+      "artifactName": "SignalRadar-Setup-${version}-x64.${ext}"
+    }
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.1",
@@ -83,5 +118,8 @@
     "react-dom": "^19.3.1",
     "vite": "^8.3.5"
   },
-  "desktopName": "signal-radar.desktop"
+  "desktopName": "signal-radar.desktop",
+  "optionalDependencies": {
+    "@img/sharp-win32-x64": "0.35.5"
+  }
 }
