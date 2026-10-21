@@ -58,6 +58,8 @@ async function refresh(opt = {}) {
   const ctx = { state, dataDir: app.getPath('userData'), log, industries: INDUSTRIES };
   let ids = Object.keys(SOURCES).filter(id => enabled(id, cfg));
   if (opt.only) ids = ids.filter(id => opt.only.includes(id));
+  const H = getK('srcHealth', {});
+  if (opt.due) ids = ids.filter(id => !(H[id] && H[id].nextAt > nowS));
   if (opt.due) ids = ids.filter(id => { const l = all('SELECT ts FROM runs WHERE source=? AND ok=1 ORDER BY id DESC LIMIT 1', [id])[0]; return !l || nowS - l.ts > SOURCES[id].freq * 60; });
   const queue = [...ids]; const worker = async () => { while (queue.length) { const id = queue.shift(); const t0 = Date.now(); send('progress', { id, state: 'running' });
     try { const list = (await SOURCES[id].fetch(kw, cfg, ctx)).filter(s => s.title && s.url); let n = 0; const now = Math.floor(Date.now() / 1000), w = srcWeight(id, cfg);
@@ -65,10 +67,10 @@ async function refresh(opt = {}) {
         const meta = JSON.stringify({ industry: s.industry || SOURCES[id].industry, velocity: s.velocity, pain: s.pain, tender: s.tender, company: s.company, historical: s.historical, cdx: s.cdx, series: s.series, sec: s.sec });
         if (ex) run('UPDATE signals SET engagement=?, fetched=?, meta=?, title=? WHERE id=?', [Math.max(0, +s.engagement || 0), now, meta, s.title.slice(0, 400), sid]);
         else run('INSERT INTO signals(id,source,kind,region,title,url,text,ts,engagement,fetched,weight,meta) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', [sid, id, s.kind || SOURCES[id].kind, s.region || SOURCES[id].region || 'global', s.title.slice(0, 400), String(s.url), (s.text || '').slice(0, 800), Math.min(+s.ts || now, now), Math.max(0, +s.engagement || 0), now, w, meta]); }
-      run('INSERT INTO runs(ts,source,ok,count,ms,err) VALUES(?,?,?,?,?,?)', [now, id, 1, list.length, Date.now() - t0, `新增 ${n}`]); report.push({ id, ok: true, count: list.length, added: n }); send('progress', { id, state: 'ok', count: list.length });
-    } catch (e) { run('INSERT INTO runs(ts,source,ok,count,ms,err) VALUES(?,?,?,?,?,?)', [Math.floor(Date.now() / 1000), id, 0, 0, Date.now() - t0, String(e.message || e).slice(0, 200)]); report.push({ id, ok: false, err: String(e.message || e) }); send('progress', { id, state: 'err', err: String(e.message) }); } } };
+      run('INSERT INTO runs(ts,source,ok,count,ms,err) VALUES(?,?,?,?,?,?)', [now, id, 1, list.length, Date.now() - t0, `新增 ${n}`]); H[id] = { fails: 0, nextAt: 0, lastOk: now, open: false }; report.push({ id, ok: true, count: list.length, added: n }); send('progress', { id, state: 'ok', count: list.length });
+    } catch (e) { run('INSERT INTO runs(ts,source,ok,count,ms,err) VALUES(?,?,?,?,?,?)', [Math.floor(Date.now() / 1000), id, 0, 0, Date.now() - t0, String(e.message || e).slice(0, 200)]); { const h = H[id] || { fails: 0 }; h.fails = (h.fails || 0) + 1; const base = Math.min(6 * 3600, (SOURCES[id].freq || 60) * 60 * 2 ** (h.fails - 1)); h.nextAt = Math.floor(Date.now() / 1000) + Math.round(Math.random() * base); h.open = h.fails >= 3; h.lastErr = String(e.message || e).slice(0, 120); H[id] = h; } report.push({ id, ok: false, err: String(e.message || e) }); send('progress', { id, state: 'err', err: String(e.message) }); } } };
   await Promise.all(Array.from({ length: 8 }, worker));
-  setK('srcState', state); save(true);
+  setK('srcState', state); setK('srcHealth', H); save(true);
   try { await embedPending(); } catch (e) { log('嵌入失败：' + e.message); }
   if (!getK('macro') || Date.now() - getK('macro').ts > 86400e3) await refreshMacro();
   if (!getK('chain') || Date.now() - getK('chain').ts > 7 * 86400e3) await refreshChain();
@@ -114,7 +116,7 @@ function checkAlerts() {
       if (db.getRowsModified() && Notification.isSupported() && !process.env.SR_SHOT) new Notification({ title: '商机雷达 · ' + title, body }).show(); } }
 }
 let snapTimer; function dailySnap() { if (!all('SELECT 1 FROM snapshots WHERE day=?', [dayOf()]).length && !busy) recluster().then(() => save(true)).catch(e => log('每日快照失败：' + e.message)); }
-function schedule() { clearInterval(snapTimer); snapTimer = setInterval(dailySnap, 3600e3); clearInterval(timer); if (getCfg().autoRefresh) timer = setInterval(() => refresh({ due: true }), 15 * 60000); }
+function schedule() { clearInterval(snapTimer); snapTimer = setInterval(dailySnap, 3600e3); clearInterval(timer); if (getCfg().autoRefresh) timer = setInterval(() => setTimeout(() => refresh({ due: true }), Math.random() * 120e3), 15 * 60000); }
 function health(id) { const s = SOURCES[id], cfg = getCfg(); const rs = all('SELECT * FROM runs WHERE source=? ORDER BY id DESC LIMIT 10', [id]);
   if (s.unavailable) return { status: 'unavailable', label: '不可用', why: s.unavailable };
   if (s.key && !cfg[s.key]) return { status: 'nokey', label: '需配置 Key' };
@@ -301,3 +303,8 @@ app.whenReady().then(async () => {
     app.quit(); }
 });
 app.on('window-all-closed', () => app.quit());
+
+ipcMain.handle('health:get', () => { const H = getK('srcHealth', {}), since = Math.floor(Date.now() / 1000) - 7 * 86400;
+  return Object.keys(SOURCES).map(id => { const r = all('SELECT COUNT(*) n, SUM(ok) k FROM runs WHERE source=? AND ts>?', [id, since])[0] || {}; const h = H[id] || {};
+    return { id, runs7d: r.n || 0, okRate: r.n ? (r.k || 0) / r.n : null, fails: h.fails || 0, open: !!h.open, nextAt: h.nextAt || 0, lastOk: h.lastOk || 0, lastErr: h.lastErr || '' }; }); });
+ipcMain.handle('login:set', (_e, on) => { try { app.setLoginItemSettings({ openAtLogin: !!on }); return true; } catch (e) { return false; } });

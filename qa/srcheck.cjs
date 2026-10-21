@@ -52,7 +52,7 @@ const waitFile = async (re, ms = 20000) => { const t0 = Date.now(); while (Date.
   await t('07 数据表：排序、列选择、CSV 导出', async () => {
     await page.locator('.dt th', { hasText: '行业' }).click(); await page.locator('.dt-tools button', { hasText: '列' }).click(); await page.locator('.colmenu label', { hasText: '阶段' }).click();
     expect(!(await page.locator('.dt th', { hasText: '阶段' }).count()), '列未隐藏'); await page.locator('.colmenu label', { hasText: '阶段' }).click(); await page.locator('.dt-tools button', { hasText: '列' }).click();
-    await page.locator('.dt-tools button', { hasText: '导出 CSV' }).click(); const f = await waitFile(/radar\.csv$/); expect(fs.readFileSync(path.join(OUT, f), 'utf8').split('\n').length > 5, 'CSV 行数不足'); });
+    const vis = await page.locator('.dt tbody tr').count(); await page.locator('.dt-tools button', { hasText: '导出 CSV' }).click(); const f = await waitFile(/radar\.csv$/); const lines = fs.readFileSync(path.join(OUT, f), 'utf8').split('\n').filter(Boolean).length; expect(vis > 0 && lines - 1 >= vis, `CSV 行数 ${lines - 1} 少于表格可见行 ${vis}`); });
   await t('08 机会详情：9 个页签逐个打开', async () => {
     await page.locator('.dt tbody tr').first().click(); await page.waitForTimeout(800); const tabs = page.locator('.tabs a, .tabs button'); const n = await tabs.count(); expect(n >= 9, '页签数 ' + n);
     for (let i = 0; i < n; i++) { await tabs.nth(i).click(); await page.waitForTimeout(300); await noErr(); } });

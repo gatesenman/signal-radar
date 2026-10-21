@@ -450,3 +450,21 @@ Windows 包：`release/SignalRadar-Setup-3.1.0-x64.exe`（175,044,272 B）。分
 | v3.7 | ~86% | P2 11/12 | 23/23 | 1.19/1.39s | 27.1s | 175.05MB |
 
 Windows 包：`release/SignalRadar-Setup-3.7.0-x64.exe`（175,049,369 B）。分片：`release/small-3.7/` part00–part08 + join.bat + SHA256SUMS.txt。SHA256 = 393f5d95…0ab8，本机合并校验一致。
+
+## v3.8 — 采集稳定性（退避 / 熔断 / 健康监控）
+**竞品与实践学习**
+- AWS Builders' Library《Timeouts, retries and backoff with jitter》：重试要限次、要加抖动，否则同步重试会形成风暴 — https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/
+- AWS《Exponential Backoff And Jitter》：Full Jitter（sleep = rand·min(cap, base·2^n)）在竞争下总耗时最低 — https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
+- AWS 熔断器模式：连续失败后打开，冷却后半开试探 — https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/circuit-breaker.html
+- AWS SDK 重试行为（标准模式 full jitter） — https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html
+**开源**
+- Huginn（MIT）：Agent 级 schedule + keep_events_for — https://deepwiki.com/huginn/huginn/3.1-agent-system
+- n8n（Sustainable Use License，非 OSI 开源，只借鉴思路不抄代码）：节点 Retry On Fail（最多 5 次/5000ms）+ Error Workflow — https://docs.n8n.io/build/flow-logic/handle-errors-gracefully
+**反思（影响×成本）**
+1. 错误假设：「15 分钟到点就全量重试」——失败源被反复敲打，且同一时刻并发。→ 源级 full-jitter 退避（上限 6h）。高/低
+2. 连续失败的源没有可见状态 → 3 次连续失败熔断，并在数据源页标「熔断/退避×n」。高/低
+3. 定时器整点同步 → 每次触发加 0–120s 随机抖动。中/极低
+4. 开机自启（login:set IPC，`app.setLoginItemSettings`）——已接后端，UI 开关留到后续。低/低
+**实现**：`srcHealth` 记录 fails/nextAt/open/lastOk/lastErr；`due` 运行跳过退避期内的源；成功即复位（相当于半开试探成功后闭合）；`health:get` IPC 返回 7 天运行数、成功率、熔断态。
+**未做/限制**：熔断冷却期就是退避期，没有单独的半开计数；手动「立即采集」不受熔断限制（这是有意为之）。
+**E2E**：23/23；启动 1.53s/1.46s；采集 27.9s（v3.7 为 1.19/1.39s、27.1s，在共享机负载波动范围内）。

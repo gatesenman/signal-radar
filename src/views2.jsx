@@ -39,17 +39,18 @@ export function Alerts({ load, say }) {
 export function Sources({ cfg, setCfg, refresh, busy, prog, say }) {
   const [list, setList] = useState([]);
   const reload = () => api.call('sources:list').then(setList);
-  useEffect(() => { reload(); }, [busy]);
+  const [hl, setHl] = useState({});
+  useEffect(() => { reload(); api.call('health:get').then(r => setHl(Object.fromEntries((r || []).map(x => [x.id, x])))); }, [busy]);
   const toggle = async id => { const dis = new Set(cfg.disabledSources || []); dis.has(id) ? dis.delete(id) : dis.add(id); const n = { ...cfg, disabledSources: [...dis] }; setCfg(await api.call('cfg:set', { disabledSources: n.disabledSources })); reload(); };
   const setW = async (id, w) => { setCfg(await api.call('cfg:set', { weights: { ...(cfg.weights || {}), [id]: +w } })); reload(); };
   const color = s => ({ healthy: 'var(--ok)', degraded: 'var(--warn)', down: 'var(--bad)', never: 'var(--mut)', off: 'var(--mut)', nokey: 'var(--warn)', unavailable: 'var(--bad)' }[s] || 'var(--mut)');
   const fq = m => !m ? '—' : m >= 1440 ? (m / 1440) + ' 天' : m >= 60 ? (m / 60) + ' 小时' : m + ' 分钟';
   const cnt = k => list.filter(s => s.status === k).length;
-  return <><PH icon="database-2-line" title="数据源管理" sub={`${list.length} 个 · 健康 ${cnt('healthy')} · 不稳定 ${cnt('degraded')} · 故障 ${cnt('down')} · 需 Key ${cnt('nokey')} · 停用 ${cnt('off')} · 不可用 ${cnt('unavailable')}`}><button onClick={() => refresh()} disabled={busy}><I n="refresh-line" />立即采集</button><button className="s" onClick={() => refresh({ due: true })} disabled={busy}>仅到期</button></PH>
+  return <><PH icon="database-2-line" title="数据源管理" sub={`${list.length} 个 · 健康 ${cnt('healthy')} · 不稳定 ${cnt('degraded')} · 故障 ${cnt('down')} · 需 Key ${cnt('nokey')} · 停用 ${cnt('off')} · 不可用 ${cnt('unavailable')} · 熔断 ${Object.values(hl).filter(x => x.open).length}`}><button onClick={() => refresh()} disabled={busy}><I n="refresh-line" />立即采集</button><button className="s" onClick={() => refresh({ due: true })} disabled={busy}>仅到期</button></PH>
     <div className="card"><table><thead><tr><th></th><th>状态</th><th>来源</th><th>类别</th><th>可信度权重</th><th>频率</th><th>成功率</th><th>上次成功</th><th>累计</th><th>说明</th></tr></thead><tbody>
       {list.map(s => { const un = s.status === 'unavailable', running = prog[s.id]?.state === 'running';
         return <tr key={s.id}><td><input type="checkbox" style={{ width: 14 }} checked={!cfg.disabledSources?.includes(s.id) && !un} disabled={un} onChange={() => toggle(s.id)} /></td>
-          <td style={{ whiteSpace: 'nowrap' }}><span className="dot" style={{ background: color(s.status) }} />{running ? '采集中…' : s.label}</td>
+          <td style={{ whiteSpace: 'nowrap' }}><span className="dot" style={{ background: color(s.status) }} />{running ? '采集中…' : s.label}{hl[s.id]?.open ? <span className="tag" style={{ marginLeft: 4, color: 'var(--bad)' }} title={hl[s.id].lastErr}>熔断</span> : hl[s.id]?.fails ? <span className="mut" style={{ fontSize: 10, marginLeft: 4 }} title={'下次重试 ' + fmt(hl[s.id].nextAt)}>退避×{hl[s.id].fails}</span> : null}</td>
           <td><b>{s.name}</b><div className="mut" style={{ fontSize: 10 }}>{s.id}{s.key ? ' · Key：' + s.key : ''}</div></td>
           <td><span className={'tag ' + (CATC[s.cat] || '')}>{s.cat}</span></td>
           <td>{un ? '—' : <input type="number" step="0.1" min="0.1" max="3" style={{ width: 58 }} defaultValue={s.weight} onBlur={e => +e.target.value !== s.weight && setW(s.id, e.target.value)} />}</td>
