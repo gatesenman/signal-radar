@@ -1,3 +1,4 @@
+import ICONS from './icons.js';
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as echarts from 'echarts';
 import logo from '../build/icon.png';
@@ -9,7 +10,7 @@ export const STAGES = [['discover', '发现', 'ri-compass-3-line'], ['screen', '
 export const CATC = { 技术: '', 资本: 'g', 需求: 'o', 供给: 'p', 人才: 'o', 宏观: 'n', 政策: 'r', 行业: 'p', 中文: 'r' };
 export const fmt = ts => ts ? new Date(ts * 1000).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-';
 export const $M = v => v == null ? '—' : v >= 1e12 ? '$' + (v / 1e12).toFixed(2) + 'T' : v >= 1e9 ? '$' + (v / 1e9).toFixed(1) + 'B' : v >= 1e6 ? '$' + (v / 1e6).toFixed(1) + 'M' : '$' + Math.round(v).toLocaleString();
-export const I = ({ n, c, s }) => <i className={'ri-' + n} style={{ color: c, fontSize: s }} />;
+export const I = ({ n, c, s, onClick }) => { const d = ICONS[String(n || '').replace(/^ri-/, '')]; return <svg className="ic" viewBox="0 0 24 24" width={s || '1em'} height={s || '1em'} fill="currentColor" aria-hidden="true" onClick={onClick} style={c ? { color: c } : undefined} dangerouslySetInnerHTML={{ __html: d || '<circle cx="12" cy="12" r="3"/>' }} />; };
 export const Src = ({ s }) => <span className="tag n">{s}</span>;
 export const L = ({ u, children }) => <a className="l" onClick={e => { e.stopPropagation(); api.call('open:url', u); }} title={u}>{children}</a>;
 export const Bar = ({ v }) => <div className="bar"><i style={{ width: Math.max(2, Math.min(100, v)) + '%' }} /></div>;
