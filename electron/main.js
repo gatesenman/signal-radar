@@ -140,13 +140,27 @@ function checkAlerts() {
       if (db.getRowsModified() && Notification.isSupported() && !process.env.SR_SHOT) new Notification({ title: NT('商机雷达 · ', 'Signal Radar · ') + title, body }).show(); } }
 }
 // v4.2 每日简报：快照后自动生成跨来源一页简报（带 [n] 引用），存为 md 并弹系统通知；不外发
+// v4.9「为什么值得看」：不再套用规则模板（如「资本涌入：…」），改为从该机会自身的数据里挑 2–3 个最有区分度的事实，
+// 按「变化 → 佐证 → 反方/不确定性」组织成一句话（data-to-text 内容选择 + 句子规划），并附上最强证据的引用
+const LIFE_CN = { exploding: '爆发', regular: '稳定增长', peaked: '已见顶', declining: '下滑', flat: '平稳' };
+function whyLine(o, cite) { const m = o.metrics || {}, f = o.fundings || [], L = o.ts?.life, k = o.kinds || {}, facts = [];
+  if (m.growthRatio >= 1.5 && m.last3 >= 5) facts.push([m.growthRatio, `近 7 天日均信号量是前 7 天的 ${(+m.growthRatio).toFixed(1)} 倍（近 3 天 ${m.last3} 条）`]);
+  if (f.length) { const sum = f.reduce((a, x) => a + (x.amountM || 0), 0); facts.push([2 + f.length, `${f.length} 笔融资${sum ? '，合计约 $' + Math.round(sum) + 'M' : ''}（最大一笔：${(f.slice().sort((a, b) => (b.amountM || 0) - (a.amountM || 0))[0].company || '').slice(0, 16)}）`]); }
+  if ((k.demand || 0) + (k.community || 0) >= 3) facts.push([1.5 + ((k.demand || 0) + (k.community || 0)) / 10, `${(k.demand || 0) + (k.community || 0)} 条需求/社区信号说明有人在找解决办法`]);
+  if ((o.sources || []).length >= 4) facts.push([1 + o.sources.length / 5, `${o.sources.length} 个独立来源交叉出现`]);
+  if (o.mosaic?.talentLinked?.linked >= 3) facts.push([1.2, `关联招聘 ${o.mosaic.talentLinked.linked} 条`]);
+  const top = facts.sort((a, b) => b[0] - a[0]).slice(0, 2).map(x => x[1]);
+  const ev = (o.evidence || []).slice().sort((a, b) => (b.engagement || 0) - (a.engagement || 0))[0];
+  const caveat = o.mosaic?.newsAdj < 1 ? '但以新闻报道为主，缺少产品或需求侧佐证' : L?.provisional ? `生命周期判为「${LIFE_CN[L.stage] || L.stage}」，历史不足 14 天，属初判` : L?.stage === 'peaked' || L?.stage === 'declining' ? `但热度已${LIFE_CN[L.stage]}` : '';
+  const head = top.length ? top.join('，') : `共 ${m.signals || 0} 条信号`;
+  return `${head}${caveat ? '；' + caveat : ''}。${ev ? '代表证据：「' + String(ev.title).slice(0, 36) + '」' + cite(ev) : ''}`; }
 function dailyBrief(day = dayOf()) { const opps = getOpps().filter(o => !o.quality?.noise && !o.stale), refs = [], cite = e => { if (!e?.url) return ''; let i = refs.findIndex(r => r.url === e.url); if (i < 0) { refs.push({ title: e.title, url: e.url }); i = refs.length - 1; } return `[${i + 1}]`; };
   const key = o => o.personal?.on ? o.personal.score : o.total, top = [...opps].sort((a, b) => key(b) - key(a)).slice(0, 5);
   const fresh = opps.filter(o => (o.metrics?.last3 || 0) > 0 && o.ts?.life?.stage === 'exploding').slice(0, 5), watch = opps.filter(o => o.watched && (o.metrics?.last3 || 0) > 0);
   const H = getK('srcHealth', {}), open = Object.entries(H).filter(([, h]) => h.open).map(([id, h]) => `${SOURCES[id]?.name || id}（连续失败 ${h.fails} 次：${h.lastErr || ''}）`);
   const cards = (getK('dims')?.cards || []).slice().sort((a, b) => (b.final || b.score) - (a.final || a.score)).slice(0, 3);
   const L = [`# 商机雷达 · 每日简报 ${day}`, '', `> 自动生成于 ${new Date().toLocaleString('zh-CN', { hour12: false })}（本机时区）。${top[0]?.personal?.on ? '排序已按你的反馈个性化（个人分）。' : '尚未启用个性化（反馈不足 3 次），按综合评分排序。'}`, '', '## 今日最值得看'];
-  top.forEach((o, i) => L.push(`${i + 1}. **${o.title}**（${o.industryName || ''}）评分 ${o.total}${o.personal?.on ? ' · 个人分 ' + o.personal.score : ''}${o.mosaic ? ' · 体检分 ' + o.mosaic.score : ''} ${(o.evidence || []).slice(0, 2).map(cite).join('')}`, `   - ${(o.statement?.whyNow || o.summary || '').toString().slice(0, 120)}`));
+  top.forEach((o, i) => L.push(`${i + 1}. **${o.title}**（${o.industryName || ''}）评分 ${o.total}${o.personal?.on ? ' · 个人分 ' + o.personal.score : ''}${o.mosaic ? ' · 体检分 ' + o.mosaic.score : ''} ${(o.evidence || []).slice(0, 2).map(cite).join('')}`, `   - ${whyLine(o, cite)}`));
   L.push('', '## 正在爆发'); if (!fresh.length) L.push('- 今日无（生命周期判为爆发且近 3 天有新信号的主题为 0）'); fresh.forEach(o => L.push(`- ${o.title}：近 3 天 ${o.metrics.last3} 条 ${cite((o.evidence || [])[0])}`));
   L.push('', '## 你在观察的'); if (!watch.length) L.push('- 无新动态'); watch.forEach(o => L.push(`- ${o.title}：近 3 天 ${o.metrics.last3} 条新信号 ${cite((o.evidence || [])[0])}`));
   if (cards.length) { L.push('', '## 多维度卡片 Top 3'); cards.forEach(c => L.push(`- 【${c.dimName}】${c.title} ${cite((c.evidence || [])[0])}`)); }

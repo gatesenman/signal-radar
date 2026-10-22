@@ -110,6 +110,7 @@ const waitFile = async (re, ms = 20000) => { const t0 = Date.now(); while (Date.
   await t('30 英文模式：行业名/主题词译为英文，数字列右对齐，主进程语言同步', async () => { await page.locator('.toolbar button[title*="English"]').click(); await page.waitForTimeout(800); await nav('Radar').catch(() => {}); await page.waitForTimeout(800);
     const txt = await page.locator('main, .main').first().innerText(); const num = await page.locator('td.num').count(); const lang = await api('lang:set', 'en'); await page.locator('.toolbar button[title*="English"]').click(); await page.waitForTimeout(300);
     expect(num > 0, '没有右对齐的数字列'); expect(lang === 'en', '主进程未收到语言'); expect(!/跨行业|软件与服务|半导体与半导体设备/.test(txt), '行业名仍是中文'); });
+  await t('31 简报「为什么值得看」基于数据而非规则模板', async () => { const b = await api('brief:daily', true); const why = b.md.split('\n').filter(l => /^   - /.test(l)); expect(why.length > 0, '无理由行'); expect(!why.some(l => /^   - (资本涌入|需求上升|技术成熟|政策驱动)：/.test(l)), '仍是模板句：' + why[0]); expect(why.every(l => /\d/.test(l)), '理由里没有具体数字'); });
   await t('23 重启后数据保留：观察、阶段、引导、保存的视图、快照', async () => {
     expect(!(await page.locator('.onb').count()), '重启后又出现引导'); const o = await api('opps:list'); expect(watched.every(id => o.find(x => x.id === id)?.watched), '观察列表丢失');
     expect(o.some(x => x.stage === 'screen'), '阶段丢失'); await nav('机会雷达'); expect(await page.locator('.fbar .chip a', { hasText: '高分' }).count() === 1, '保存的视图丢失'); expect((await api('snap:list')).length >= 20, '快照丢失'); });
