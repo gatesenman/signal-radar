@@ -4,15 +4,18 @@ const EN = { 总览: 'Overview', 信号流: 'Signals', 机会雷达: 'Radar', �
   发现: 'Discover', 筛选: 'Screen', 研究: 'Research', 验证: 'Validate', 决策: 'Decide', 跟踪: 'Track', 工具: 'Tools', 立即采集: 'Collect now', 重新聚类: 'Re-cluster', 报告: 'Report', 就绪: 'Ready', 采集中: 'Collecting', 搜索: 'Search', 初筛: 'Screen', 深研: 'Deep dive', 立项: 'Go', 放弃: 'Drop' };
 let LANG = localStorage.getItem('lang') || 'zh';
 export const t = s => (LANG === 'en' && EN[s]) || s;
-import { EXACT, PHRASES } from './i18n-en.js';
+import { EXACT, PHRASES, TERMS } from './i18n-en.js';
+// v4.8 数据内容：行业/板块名（来自 GICS 表的官方英文名）在运行时并入词典
+api.call('industries').then(L => { for (const i of L || []) { if (i.cn && i.en) EXACT[i.cn] = i.en; if (i.sectorCn && i.sectorEn) EXACT[i.sectorCn] = i.sectorEn; } EXACT['跨行业'] = 'Cross-industry'; }).catch(() => {});
 // 英文版正文：遍历文本节点，整句命中词典则替换，否则做短语替换；MutationObserver 跟随渲染（原文存进 __zh，切回中文时还原）
 const HAN = /[\u4e00-\u9fa5]/; let obs = null;
-const trNode = n => { const raw = n.__zh ?? n.nodeValue; if (!HAN.test(raw)) return; const s = raw.trim(); let out = EXACT[s] ? raw.replace(s, EXACT[s]) : raw; if (out === raw) for (const [a, b] of PHRASES) if (out.includes(a)) out = out.split(a).join(b); if (out !== raw) { n.__zh = raw; if (n.nodeValue !== out) n.nodeValue = out; } };
+const trNode = n => { const raw = n.__zh ?? n.nodeValue; if (!HAN.test(raw)) return; const s = raw.trim(); let out = EXACT[s] ? raw.replace(s, EXACT[s]) : raw; if (out === raw && s.includes(' · ')) { const tk = s.split(' · ').map(t => EXACT[t] || TERMS[t] || t); const j = tk.join(' · '); if (j !== s) out = raw.replace(s, j); } if (out === raw) for (const [a, b] of PHRASES) if (out.includes(a)) out = out.split(a).join(b); if (out !== raw) { n.__zh = raw; if (n.nodeValue !== out) n.nodeValue = out; } };
 const walk = root => { const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) trNode(n); root.querySelectorAll?.('[placeholder],[title]').forEach(el => { for (const a of ['placeholder', 'title']) { const v = el.getAttribute(a); if (v && HAN.test(v) && EXACT[v.trim()]) el.setAttribute(a, EXACT[v.trim()]); } }); };
 const restore = () => { const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) if (n.__zh != null) { n.nodeValue = n.__zh; delete n.__zh; } };
 export function applyLang(l) { try { window.__dimEn = l === 'en' ? Object.fromEntries([['demand_gap','Demand gap'],['tech_transfer','Tech transfer'],['geo_arbitrage','Geo arbitrage'],['policy','Policy'],['chokepoint','Chokepoint'],['capital','Capital'],['talent','Talent'],['cost_curve','Cost inflection'],['trend_accel','Trend accel'],['competitor_weak','Competitor weak'],['platform','Platform'],['tender','Tenders'],['trade','Trade'],['model_transfer','Model transfer'],['substitute','Substitute']]) : null; } catch {}  document.documentElement.lang = l === 'en' ? 'en' : 'zh'; if (l === 'en') { walk(document.body); if (!obs) { obs = new MutationObserver(ms => { obs.disconnect(); for (const m of ms) { if (m.type === 'characterData') { delete m.target.__zh; trNode(m.target); } m.addedNodes.forEach(x => x.nodeType === 3 ? trNode(x) : x.nodeType === 1 && walk(x)); } obs.observe(document.body, { childList: true, subtree: true, characterData: true }); }); obs.observe(document.body, { childList: true, subtree: true, characterData: true }); } } else { obs?.disconnect(); obs = null; restore(); } }
-export const setLang = l => { LANG = l; localStorage.setItem('lang', l); setTimeout(() => applyLang(l), 0); };
+export const setLang = l => { LANG = l; localStorage.setItem('lang', l); api.call('lang:set', l).catch(() => {}); setTimeout(() => applyLang(l), 0); };
 if (LANG === 'en') setTimeout(() => applyLang('en'), 500);
+api.call('lang:set', LANG).catch(() => {});
 export const getLang = () => LANG;
 export const applyTheme = th => { document.documentElement.dataset.theme = th; localStorage.setItem('theme', th); };
 applyTheme(localStorage.getItem('theme') || 'dark');
@@ -65,6 +68,8 @@ export function AlertDrawer({ close, open }) {
 export function DataTable({ rows, cols, onRow, batch = [], id = 'id', name = 'table' }) {
   const [sort, setSort] = useState(null), [hide, setHide] = useState(() => JSON.parse(localStorage.getItem('cols:' + name) || '[]')), [sel, setSel] = useState(new Set()), [cm, setCm] = useState(false);
   const vis = cols.filter(c => !hide.includes(c.k));
+  // v4.8 数字列右对齐：显式 num 或「取值中 ≥80% 为数字」的列自动右对齐（Primer / Visa 表格规范）
+  const isNum = useMemo(() => Object.fromEntries(cols.map(c => { if (c.num != null) return [c.k, c.num]; const xs = rows.slice(0, 50).map(r => c.v ? c.v(r) : r[c.k]).filter(x => x != null && x !== '' && x !== -1); return [c.k, xs.length > 0 && xs.filter(x => typeof x === 'number' && isFinite(x)).length / xs.length >= .8]; })), [rows, cols]);
   const data = useMemo(() => { if (!sort) return rows; const c = cols.find(x => x.k === sort.k), v = r => c.v ? c.v(r) : r[c.k]; return [...rows].sort((a, b) => { const x = v(a), y = v(b); return (x > y ? 1 : x < y ? -1 : 0) * (sort.d ? -1 : 1); }); }, [rows, sort]);
   const csv = () => { const esc = s => `"${String(s ?? '').replace(/"/g, '""')}"`; const txt = '\ufeff' + [vis.map(c => esc(c.n)).join(','), ...data.filter(r => !sel.size || sel.has(r[id])).map(r => vis.map(c => esc(c.v ? c.v(r) : r[c.k])).join(','))].join('\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([txt], { type: 'text/csv' })); a.download = name + '.csv'; a.click(); };
@@ -73,8 +78,8 @@ export function DataTable({ rows, cols, onRow, batch = [], id = 'id', name = 'ta
     {sel.size > 0 && <span className="batch">{batch.map(([ic, n, f]) => <button key={n} className="s" onClick={() => { f([...sel]); setSel(new Set()); }}><I n={ic} /> {n}</button>)}</span>}
     <span style={{ position: 'relative' }}><button className="s" onClick={() => setCm(!cm)}><I n="layout-column-line" /> 列</button>{cm && <div className="colmenu">{cols.map(c => <label key={c.k}><input type="checkbox" checked={!hide.includes(c.k)} onChange={() => togH(c.k)} /> {c.n}</label>)}</div>}</span>
     <button className="s" onClick={csv}><I n="file-excel-2-line" /> 导出 CSV</button></div>
-    {!rows.length ? <Empty text="没有数据" /> : <table><thead><tr><th style={{ width: 24 }}><input type="checkbox" checked={sel.size === rows.length} onChange={e => setSel(e.target.checked ? new Set(rows.map(r => r[id])) : new Set())} /></th>{vis.map(c => <th key={c.k} onClick={() => setSort(s => ({ k: c.k, d: s?.k === c.k ? !s.d : true }))} style={{ cursor: 'pointer', width: c.w }}>{c.n} {sort?.k === c.k && <I n={sort.d ? 'arrow-down-s-line' : 'arrow-up-s-line'} />}</th>)}</tr></thead>
-      <tbody>{data.slice(0, 500).map(r => <tr key={r[id]} onClick={() => onRow?.(r)} onContextMenu={e => r.__ctx?.(e)}><td onClick={e => e.stopPropagation()}><input type="checkbox" checked={sel.has(r[id])} onChange={() => { const s = new Set(sel); s.has(r[id]) ? s.delete(r[id]) : s.add(r[id]); setSel(s); }} /></td>{vis.map(c => <td key={c.k}>{c.r ? c.r(r) : c.v ? c.v(r) : r[c.k]}</td>)}</tr>)}</tbody></table>}</div>;
+    {!rows.length ? <Empty text="没有数据" /> : <table><thead><tr><th style={{ width: 24 }}><input type="checkbox" checked={sel.size === rows.length} onChange={e => setSel(e.target.checked ? new Set(rows.map(r => r[id])) : new Set())} /></th>{vis.map(c => <th key={c.k} onClick={() => setSort(s => ({ k: c.k, d: s?.k === c.k ? !s.d : true }))} className={isNum[c.k] ? 'num' : ''} style={{ cursor: 'pointer', width: c.w }}>{c.n} {sort?.k === c.k && <I n={sort.d ? 'arrow-down-s-line' : 'arrow-up-s-line'} />}</th>)}</tr></thead>
+      <tbody>{data.slice(0, 500).map(r => <tr key={r[id]} onClick={() => onRow?.(r)} onContextMenu={e => r.__ctx?.(e)}><td onClick={e => e.stopPropagation()}><input type="checkbox" checked={sel.has(r[id])} onChange={() => { const s = new Set(sel); s.has(r[id]) ? s.delete(r[id]) : s.add(r[id]); setSel(s); }} /></td>{vis.map(c => <td key={c.k} className={isNum[c.k] ? 'num' : ''}>{c.r ? c.r(r) : c.v ? c.v(r) : r[c.k]}</td>)}</tr>)}</tbody></table>}</div>;
 }
 
 // 统一筛选条：行业 / 地区 / 时间 / 分数 / 置信度 / 来源，可保存为视图

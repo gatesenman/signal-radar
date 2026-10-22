@@ -616,3 +616,19 @@ Windows 包：`release/SignalRadar-Setup-3.7.0-x64.exe`（175,049,369 B）。分
 与原排序的 Top10 重合分别为 9 个和 7 个。
 **问题**：探索位目前是固定位置，没有用不确定性（UCB/Thompson）来选；用户点开或无视探索项，也还没有反馈回来更新画像。
 **E2E**：29/29；启动 1.05s/1.16s；采集 23.1s。（第一次运行时机器 load average 超过 100，E2E 的渲染进程崩溃；负载降下来后重跑通过。）
+
+## v4.8 — 英文数据内容、主进程语言同步、数字列右对齐
+**学习**
+- Dataiku《Internationalizing an Electron app》：渲染进程是语言的唯一来源，通过 IPC 推给主进程；主进程持久化语言，并负责原生菜单和通知的文案 — https://www.dataiku.com/tech-blog/internationalizing-an-electron-app-lessons-from-the-kiji-privacy-proxy
+- electron-template ADR-0004：启动时先从持久化配置读取语言，避免首帧闪烁 — https://github.com/sotayamashita/electron-template/blob/ba6cb01e/docs/adr/0004-electron-i18n-language-persistence-and-menu-localization.md
+- Electron app.getLocale / getPreferredSystemLanguages — https://electronjs.org/docs/latest/api/app
+- 数字右对齐：Primer / Visa 表格规范（见 v4.3 链接）。
+**开源**：i18next（MIT）仍然不引入；参考 Kiji 的做法，主进程只用一张小表，不加载 i18next。
+**反思**
+1. 「原生菜单仍是中文」这一条，实际查了代码：应用调用了 `Menu.setApplicationMenu(null)`，菜单栏是渲染进程画的，早已翻译。真正还是中文的是**系统通知和提醒标题**（主进程生成）。→ 新增 `lang:set` IPC，渲染进程启动时和切换语言时同步给主进程，主进程持久化；通知、提醒、简报通知都用 `NT(zh, en)` 输出。高/低
+2. 行业名：GICS 表本来就带官方英文名，只是没有接到 DOM 词典。→ 启动时把 74 个子行业和 11 个板块的中英对照并入词典，外加「跨行业」→ Cross-industry。高/极低
+3. 机会标题（c-TF-IDF 词串）：没有机器翻译，就人工整理了一份约 95 个高频中文主题词的词表，标题按「 · 」分词后逐个替换；分词残片（如「费榜」）保持原文。中/中
+4. 数字列：DataTable 自动识别（显式 `num`，或前 50 行里 ≥80% 是数字），右对齐并使用等宽数字。中/低
+**抽检**：当前 120 个机会里有 64 个标题含中文，共 121 个中文词，词表能覆盖 97 个（80%），45 个标题可以整条译成英文；剩下 19 个仍带中文残片。E2E 30 检查：英文模式下雷达页没有出现中文行业名、存在右对齐的数字列、主进程收到 `en`。
+**问题**：简报正文（md）仍只有中文；没有词表的新词仍显示中文；证据标题等原始数据按设计保留原文。
+**E2E**：30/30；启动 0.99s/1.04s；采集 23.8s。

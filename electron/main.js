@@ -126,16 +126,18 @@ function personalize(list) { const byId = Object.fromEntries(list.map(o => [o.id
 function getOpps() { const DM = getK('dims')?.oppDims || {}; const macro = { ...(getK('macro') || {}), stats: getK('istats'), chainData: getK('chain') }; const ids = new Set(); const list = all('SELECT json FROM opps ORDER BY total DESC').map(r => { const o = JSON.parse(r.json); ids.add(o.id); const m = merged(o, macro); const dh = DM[o.id] || []; m.dimHits = dh; if (dh.length > 1) { m.dimBoost = 8 * (dh.length - 1); m.total = Math.min(100, m.total + m.dimBoost); } return m; }).sort((a, b) => b.total - a.total);
   for (const r of all('SELECT * FROM workspace')) { const w = JSON.parse(r.json); if (!ids.has(r.opp_id) && w.snapshot && ((w.stage && w.stage !== 'discover') || w.watched)) list.push({ ...merged(w.snapshot, macro), stale: true }); }
   personalize(list); return list; }
+// v4.8 主进程文案（系统通知、提醒标题）跟随界面语言；渲染进程切换语言时通过 lang:set 告知
+let LANG = 'zh'; const NT = (zh, en) => LANG === 'en' ? en : zh;
 function checkAlerts() {
   const opps = getOpps(), sigs = all('SELECT * FROM signals WHERE fetched > ?', [Math.floor(Date.now() / 1000) - 3600]);
   for (const a of all('SELECT * FROM alerts WHERE enabled=1')) { const hits = [];
-    if (a.type === 'score') opps.filter(o => o.total >= +a.value).forEach(o => hits.push([o.id, `高分机会：${o.title}（${o.total}）`, o.statement.pain.slice(0, 120)]));
-    if (a.type === 'keyword') sigs.filter(s => (s.title + s.text).toLowerCase().includes(a.value.toLowerCase())).forEach(s => hits.push([s.id, `关键词「${a.value}」新信号`, s.title]));
-    if (a.type === 'funding') sigs.map(E.extractFunding).filter(f => f && f.amountM >= +a.value).forEach(f => hits.push([f.url, `融资 ≥ $${a.value}M：${f.company}`, f.title]));
-    if (a.type === 'industry') opps.filter(o => o.industry && o.industry.startsWith(a.value)).forEach(o => hits.push([o.id, `行业 ${a.value} 新机会：${o.title}`, o.industryName]));
-    if (a.type === 'watch') opps.filter(o => o.watched && o.metrics.last3 > 0).forEach(o => hits.push([o.id + ':' + new Date().toDateString(), `观察中的机会有新动态：${o.title}`, `近 3 天 ${o.metrics.last3} 条新信号`]));
+    if (a.type === 'score') opps.filter(o => o.total >= +a.value).forEach(o => hits.push([o.id, NT(`高分机会：${o.title}（${o.total}）`, `High-score opportunity: ${o.title} (${o.total})`), o.statement.pain.slice(0, 120)]));
+    if (a.type === 'keyword') sigs.filter(s => (s.title + s.text).toLowerCase().includes(a.value.toLowerCase())).forEach(s => hits.push([s.id, NT(`关键词「${a.value}」新信号`, `New signal for keyword "${a.value}"`), s.title]));
+    if (a.type === 'funding') sigs.map(E.extractFunding).filter(f => f && f.amountM >= +a.value).forEach(f => hits.push([f.url, NT(`融资 ≥ $${a.value}M：${f.company}`, `Funding ≥ $${a.value}M: ${f.company}`), f.title]));
+    if (a.type === 'industry') opps.filter(o => o.industry && o.industry.startsWith(a.value)).forEach(o => hits.push([o.id, NT(`行业 ${a.value} 新机会：${o.title}`, `New in industry ${a.value}: ${o.title}`), o.industryName]));
+    if (a.type === 'watch') opps.filter(o => o.watched && o.metrics.last3 > 0).forEach(o => hits.push([o.id + ':' + new Date().toDateString(), NT(`观察中的机会有新动态：${o.title}`, `Watched opportunity updated: ${o.title}`), NT(`近 3 天 ${o.metrics.last3} 条新信号`, `${o.metrics.last3} new signals in 3 days`)]));
     for (const [ref, title, body] of hits) { run('INSERT OR IGNORE INTO notifications(ts,alert_id,ref,title,body) VALUES(?,?,?,?,?)', [Date.now(), a.id, ref, title, body]);
-      if (db.getRowsModified() && Notification.isSupported() && !process.env.SR_SHOT) new Notification({ title: '商机雷达 · ' + title, body }).show(); } }
+      if (db.getRowsModified() && Notification.isSupported() && !process.env.SR_SHOT) new Notification({ title: NT('商机雷达 · ', 'Signal Radar · ') + title, body }).show(); } }
 }
 // v4.2 每日简报：快照后自动生成跨来源一页简报（带 [n] 引用），存为 md 并弹系统通知；不外发
 function dailyBrief(day = dayOf()) { const opps = getOpps().filter(o => !o.quality?.noise && !o.stale), refs = [], cite = e => { if (!e?.url) return ''; let i = refs.findIndex(r => r.url === e.url); if (i < 0) { refs.push({ title: e.title, url: e.url }); i = refs.length - 1; } return `[${i + 1}]`; };
@@ -151,7 +153,7 @@ function dailyBrief(day = dayOf()) { const opps = getOpps().filter(o => !o.quali
   L.push('', '## 采集健康'); L.push(open.length ? open.map(x => '- 熔断：' + x).join('\n') : '- 所有启用的数据源均未熔断');
   L.push('', '## 引用'); refs.forEach((r, i) => L.push(`[${i + 1}] ${r.title || r.url} — ${r.url}`));
   const md = L.join('\n'), dir = path.join(app.getPath('userData'), 'briefs'); fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, day + '.md'), md);
-  setK('lastBrief', { day, md }); if (Notification.isSupported() && !process.env.SR_SHOT) new Notification({ title: '商机雷达 · 每日简报', body: top[0] ? '今日首位：' + top[0].title.slice(0, 40) : '今日简报已生成' }).show();
+  setK('lastBrief', { day, md }); if (Notification.isSupported() && !process.env.SR_SHOT) new Notification({ title: NT('商机雷达 · 每日简报', 'Signal Radar · Daily brief'), body: top[0] ? NT('今日首位：', 'Top today: ') + top[0].title.slice(0, 40) : NT('今日简报已生成', 'Today’s brief is ready') }).show();
   send('brief', { day }); return { day, md, file: path.join(dir, day + '.md') }; }
 const FAULT = new Set((process.env.SR_FAULT || '').split(',').filter(Boolean));
 let snapTimer; function dailySnap() { if (!all('SELECT 1 FROM snapshots WHERE day=?', [dayOf()]).length && !busy) return recluster().then(() => { save(true); if (getCfg().dailyBrief !== false) dailyBrief(); }).catch(e => log('每日快照失败：' + e.message)); }
@@ -181,7 +183,7 @@ function takeSnapshot({ day = dayOf(), opps, dims, backfill = false, endTs = Mat
   run('INSERT OR REPLACE INTO snapshots VALUES(?,?,?,?,?)', [day, s.ts, backfill ? 1 : 0, JSON.stringify(s.stats), zlib.gzipSync(JSON.stringify(s))]);
   if (!backfill && s.stats.newHigh) { const hi = s.opps.filter(o => s.diff.new.includes(o.id) && o.total >= 75);
     for (const o of hi) run('INSERT OR IGNORE INTO notifications(ts,alert_id,ref,title,body) VALUES(?,?,?,?,?)', [Date.now(), -1, o.id + '@' + day, `每日快照：新高分机会 ${o.title}`, `${day} 首次进入榜单，评分 ${o.total}（≥75），行业 ${o.industryName || ''}`]);
-    if (Notification.isSupported() && !process.env.SR_SHOT) new Notification({ title: '商机雷达 · 每日快照', body: `${day} 新增 ${hi.length} 个高分机会` }).show(); }
+    if (Notification.isSupported() && !process.env.SR_SHOT) new Notification({ title: NT('商机雷达 · 每日快照', 'Signal Radar · Daily snapshot'), body: NT(`${day} 新增 ${hi.length} 个高分机会`, `${day}: ${hi.length} new high-score opportunities`) }).show(); }
   log(`快照 ${day}${backfill ? '（回填）' : ''}：${s.stats.opps} 个机会，新增 ${s.stats.new}，跌出 ${s.stats.gone}`); return s.stats; }
 async function backfillSnapshots(days = 30) { const out = []; const today = new Date(); today.setHours(23, 59, 59, 0);
   const minTs = all('SELECT MIN(ts) m FROM signals WHERE emb IS NOT NULL AND ts > ?', [Math.floor(Date.now() / 1000) - 400 * 86400])[0].m || 0;
@@ -309,6 +311,7 @@ const H = {
   'brief:daily': (_, gen) => gen ? dailyBrief() : (getK('lastBrief') || null),
   'brief:daily:list': () => { const dir = path.join(app.getPath('userData'), 'briefs'); return fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => f.endsWith('.md')).sort().reverse() : []; },
   'brief:daily:open': () => shell.openPath(path.join(app.getPath('userData'), 'briefs')),
+  'lang:set': (_, l) => { LANG = l === 'en' ? 'en' : 'zh'; setK('lang', LANG); return LANG; },
   'stage:gate': (_, id) => stageGate(getOpps().find(x => x.id === id) || {}),
   'memo:save': (_, { id, fmt }) => { const o = getOpps().find(x => x.id === id); return saveDoc(icMemo(o), 'IC-Memo-' + o.title.replace(/[^\w\u4e00-\u9fa5]+/g, '_').slice(0, 30), fmt); },
   'share:export': async () => { const r = await dialog.showSaveDialog(win, { defaultPath: `商机雷达-共享-${new Date().toISOString().slice(0, 10)}.json` }); if (r.canceled) return null;
@@ -326,7 +329,7 @@ const H = {
 for (const [k, f] of Object.entries(H)) ipcMain.handle(k, f);
 
 app.whenReady().then(async () => {
-  await initDb(); Menu.setApplicationMenu(null);
+  await initDb(); Menu.setApplicationMenu(null); LANG = getK('lang', 'zh');
   const icon = path.join(__dirname, '..', 'build', 'icon.png');
   win = new BrowserWindow({ width: 1440, height: 900, minWidth: 1100, minHeight: 700, frame: false, backgroundColor: '#0b0f17', title: '商机雷达 Signal Radar', icon: fs.existsSync(icon) ? nativeImage.createFromPath(icon) : undefined, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true } });
   if (process.argv.includes('--hidden')) win.once('ready-to-show', () => win.minimize()); // 开机自启：最小化启动

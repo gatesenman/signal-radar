@@ -78,3 +78,6 @@ tr.flash,tr.flash td{animation:evflash 1.2s ease}@keyframes evflash{0%{backgroun
 .tag{max-width:12em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .tabs{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:2px;scrollbar-width:thin}
 .tabs a{flex:0 0 auto}
+
+/* v4.8 数字列右对齐 */
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}th.num{padding-right:10px}
