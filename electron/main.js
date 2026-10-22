@@ -59,16 +59,20 @@ async function refresh(opt = {}) {
   let ids = Object.keys(SOURCES).filter(id => enabled(id, cfg));
   if (opt.only) ids = ids.filter(id => opt.only.includes(id));
   const H = getK('srcHealth', {});
-  if (opt.due) ids = ids.filter(id => !(H[id] && H[id].nextAt > nowS));
-  if (opt.due) ids = ids.filter(id => { const l = all('SELECT ts FROM runs WHERE source=? AND ok=1 ORDER BY id DESC LIMIT 1', [id])[0]; return !l || nowS - l.ts > SOURCES[id].freq * 60; });
+  // v4.4 熔断三态：closed → open（连续失败≥3）→ 冷却到期后 half（只放行 1 次试探）→ 成功 closed / 失败重新 open 且冷却翻倍
+  if (opt.due) ids = ids.filter(id => { const h = H[id]; if (!h || !h.nextAt || h.nextAt <= nowS) { if (h?.open) { h.state = 'half'; h.probes = (h.probes || 0) + 1; } return true; } return false; });
+  if (opt.due) ids = ids.filter(id => { const l = H[id]; return !(l && l.state === 'half' && l.probing); });
+  for (const id of ids) if (H[id]?.state === 'half') H[id].probing = true;
+  if (opt.due) ids = ids.filter(id => { const l = all('SELECT ts FROM runs WHERE source=? AND ok=1 ORDER BY id DESC LIMIT 1', [id])[0]; return H[id]?.state === 'half' || !l || nowS - l.ts > SOURCES[id].freq * 60; });
   const queue = [...ids]; const worker = async () => { while (queue.length) { const id = queue.shift(); const t0 = Date.now(); send('progress', { id, state: 'running' });
-    try { const list = (await SOURCES[id].fetch(kw, cfg, ctx)).filter(s => s.title && s.url); let n = 0; const now = Math.floor(Date.now() / 1000), w = srcWeight(id, cfg);
+    try { if (FAULT.has(id)) throw new Error('注入故障（测试）');
+      const list = (await SOURCES[id].fetch(kw, cfg, ctx)).filter(s => s.title && s.url); let n = 0; const now = Math.floor(Date.now() / 1000), w = srcWeight(id, cfg);
       for (const s of list) { const sid = id + ':' + hash(String(s.url) + s.title); const ex = all('SELECT 1 FROM signals WHERE id=?', [sid]).length; if (!ex) n++;
         const meta = JSON.stringify({ industry: s.industry || SOURCES[id].industry, velocity: s.velocity, pain: s.pain, tender: s.tender, company: s.company, historical: s.historical, cdx: s.cdx, series: s.series, sec: s.sec });
         if (ex) run('UPDATE signals SET engagement=?, fetched=?, meta=?, title=? WHERE id=?', [Math.max(0, +s.engagement || 0), now, meta, s.title.slice(0, 400), sid]);
         else run('INSERT INTO signals(id,source,kind,region,title,url,text,ts,engagement,fetched,weight,meta) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', [sid, id, s.kind || SOURCES[id].kind, s.region || SOURCES[id].region || 'global', s.title.slice(0, 400), String(s.url), (s.text || '').slice(0, 800), Math.min(+s.ts || now, now), Math.max(0, +s.engagement || 0), now, w, meta]); }
-      run('INSERT INTO runs(ts,source,ok,count,ms,err) VALUES(?,?,?,?,?,?)', [now, id, 1, list.length, Date.now() - t0, `新增 ${n}`]); H[id] = { fails: 0, nextAt: 0, lastOk: now, open: false }; report.push({ id, ok: true, count: list.length, added: n }); send('progress', { id, state: 'ok', count: list.length });
-    } catch (e) { run('INSERT INTO runs(ts,source,ok,count,ms,err) VALUES(?,?,?,?,?,?)', [Math.floor(Date.now() / 1000), id, 0, 0, Date.now() - t0, String(e.message || e).slice(0, 200)]); { const h = H[id] || { fails: 0 }; h.fails = (h.fails || 0) + 1; const base = Math.min(6 * 3600, (SOURCES[id].freq || 60) * 60 * 2 ** (h.fails - 1)); h.nextAt = Math.floor(Date.now() / 1000) + Math.round(Math.random() * base); h.open = h.fails >= 3; h.lastErr = String(e.message || e).slice(0, 120); H[id] = h; } report.push({ id, ok: false, err: String(e.message || e) }); send('progress', { id, state: 'err', err: String(e.message) }); } } };
+      run('INSERT INTO runs(ts,source,ok,count,ms,err) VALUES(?,?,?,?,?,?)', [now, id, 1, list.length, Date.now() - t0, `新增 ${n}`]); H[id] = { fails: 0, nextAt: 0, lastOk: now, open: false, state: 'closed', recovered: H[id]?.state === 'half' ? now : H[id]?.recovered, probes: H[id]?.probes || 0 }; report.push({ id, ok: true, count: list.length, added: n }); send('progress', { id, state: 'ok', count: list.length });
+    } catch (e) { run('INSERT INTO runs(ts,source,ok,count,ms,err) VALUES(?,?,?,?,?,?)', [Math.floor(Date.now() / 1000), id, 0, 0, Date.now() - t0, String(e.message || e).slice(0, 200)]); { const h = H[id] || { fails: 0 }; h.fails = (h.fails || 0) + 1; const base = Math.min(6 * 3600, (SOURCES[id].freq || 60) * 60 * 2 ** (h.fails - 1)); h.nextAt = Math.floor(Date.now() / 1000) + Math.round(Math.random() * base); if (h.state === 'half') { h.nextAt = Math.floor(Date.now() / 1000) + Math.min(12 * 3600, 2 * base); } h.probing = false; h.open = h.fails >= 3; h.state = h.open ? 'open' : 'closed'; h.lastErr = String(e.message || e).slice(0, 120); H[id] = h; } report.push({ id, ok: false, err: String(e.message || e) }); send('progress', { id, state: 'err', err: String(e.message) }); } } };
   await Promise.all(Array.from({ length: 8 }, worker));
   setK('srcState', state); setK('srcHealth', H); save(true);
   try { await embedPending(); } catch (e) { log('嵌入失败：' + e.message); }
@@ -140,7 +144,8 @@ function dailyBrief(day = dayOf()) { const opps = getOpps().filter(o => !o.quali
   const md = L.join('\n'), dir = path.join(app.getPath('userData'), 'briefs'); fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, day + '.md'), md);
   setK('lastBrief', { day, md }); if (Notification.isSupported() && !process.env.SR_SHOT) new Notification({ title: '商机雷达 · 每日简报', body: top[0] ? '今日首位：' + top[0].title.slice(0, 40) : '今日简报已生成' }).show();
   send('brief', { day }); return { day, md, file: path.join(dir, day + '.md') }; }
-let snapTimer; function dailySnap() { if (!all('SELECT 1 FROM snapshots WHERE day=?', [dayOf()]).length && !busy) recluster().then(() => { save(true); if (getCfg().dailyBrief !== false) dailyBrief(); }).catch(e => log('每日快照失败：' + e.message)); }
+const FAULT = new Set((process.env.SR_FAULT || '').split(',').filter(Boolean));
+let snapTimer; function dailySnap() { if (!all('SELECT 1 FROM snapshots WHERE day=?', [dayOf()]).length && !busy) return recluster().then(() => { save(true); if (getCfg().dailyBrief !== false) dailyBrief(); }).catch(e => log('每日快照失败：' + e.message)); }
 function schedule() { clearInterval(snapTimer); snapTimer = setInterval(dailySnap, 3600e3); clearInterval(timer); if (getCfg().autoRefresh) timer = setInterval(() => setTimeout(() => refresh({ due: true }), Math.random() * 120e3), 15 * 60000); }
 function health(id) { const s = SOURCES[id], cfg = getCfg(); const rs = all('SELECT * FROM runs WHERE source=? ORDER BY id DESC LIMIT 10', [id]);
   if (s.unavailable) return { status: 'unavailable', label: '不可用', why: s.unavailable };
@@ -333,7 +338,11 @@ app.whenReady().then(async () => {
 });
 app.on('window-all-closed', () => app.quit());
 
+if (!app.isPackaged || process.env.SR_E2E === '1') { // 仅开发/测试：注入故障、快进冷却、触发每日快照路径
+  ipcMain.handle('debug:fault', (_e, ids) => { FAULT.clear(); (ids || []).forEach(x => FAULT.add(x)); return [...FAULT]; });
+  ipcMain.handle('debug:cool', (_e, id) => { const H = getK('srcHealth', {}); if (H[id]) { H[id].nextAt = 0; setK('srcHealth', H); } return H[id]; });
+  ipcMain.handle('debug:snap', async () => { run('DELETE FROM snapshots WHERE day=?', [dayOf()]); await dailySnap(); return getK('lastBrief'); }); }
 ipcMain.handle('health:get', () => { const H = getK('srcHealth', {}), since = Math.floor(Date.now() / 1000) - 7 * 86400;
   return Object.keys(SOURCES).map(id => { const r = all('SELECT COUNT(*) n, SUM(ok) k FROM runs WHERE source=? AND ts>?', [id, since])[0] || {}; const h = H[id] || {};
-    return { id, runs7d: r.n || 0, okRate: r.n ? (r.k || 0) / r.n : null, fails: h.fails || 0, open: !!h.open, nextAt: h.nextAt || 0, lastOk: h.lastOk || 0, lastErr: h.lastErr || '' }; }); });
+    return { id, runs7d: r.n || 0, okRate: r.n ? (r.k || 0) / r.n : null, fails: h.fails || 0, open: !!h.open, state: h.state || 'closed', probes: h.probes || 0, recovered: h.recovered || 0, nextAt: h.nextAt || 0, lastOk: h.lastOk || 0, lastErr: h.lastErr || '' }; }); });
 ipcMain.handle('login:set', (_e, on) => { try { app.setLoginItemSettings({ openAtLogin: !!on }); return true; } catch (e) { return false; } });

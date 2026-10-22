@@ -7,7 +7,7 @@ const initSql = require(path.join(APP, 'node_modules/sql.js'));
 const results = []; let app, page; const consoleErrors = [];
 const startups = [];
 async function launch() { const t0 = Date.now();
-  app = await electron.launch({ ...(process.env.E2E_EL ? { executablePath: process.env.E2E_EL } : {}), args: [APP, '--no-sandbox', '--user-data-dir=' + UD], env: { ...process.env, SR_DB: DB, SR_ONLY: process.env.E2E_ONLY || 'hn,arxiv' }, timeout: 60000 });
+  app = await electron.launch({ ...(process.env.E2E_EL ? { executablePath: process.env.E2E_EL } : {}), args: [APP, '--no-sandbox', '--user-data-dir=' + UD], env: { ...process.env, SR_E2E: '1', SR_DB: DB, SR_ONLY: process.env.E2E_ONLY || 'hn,arxiv' }, timeout: 60000 });
   page = await app.firstWindow(); page.setDefaultTimeout(120000); page.on('console', m => m.type() === 'error' && consoleErrors.push(m.text())); page.on('pageerror', e => consoleErrors.push('pageerror: ' + e.message));
   await page.waitForSelector('nav a', { timeout: 120000 }); startups.push(Date.now() - t0);
   await app.evaluate(({ dialog, session }, out) => { let n = 0; const J = (a, b) => a + '/' + String(b).split(/[\\/]/).pop(); dialog.showSaveDialog = async (w, o) => ({ canceled: false, filePath: J(out, (o || w)?.defaultPath || 'file' + (++n)) });
@@ -99,6 +99,13 @@ const waitFile = async (re, ms = 20000) => { const t0 = Date.now(); while (Date.
   await t('25 采集健康：health:get 返回每个源的退避/熔断字段', async () => { const h = await api('health:get'); expect(Array.isArray(h) && h.length > 10 && 'open' in h[0] && 'okRate' in h[0], 'health 结构不对'); });
   await t('26 融资页/宏观页为 DataTable，英文模式下表头无中文残留', async () => { await nav('资本与融资'); expect(await page.locator('.dt, table').count(), '融资页无表格'); await page.locator('.toolbar button[title*="English"]').click(); await page.waitForTimeout(500);
     const hd = await page.locator('main thead, .main thead').allInnerTexts().catch(() => []); const txt = (hd.join(' ') || await page.locator('thead').first().innerText()); await page.locator('.toolbar button[title*="English"]').click(); expect(!/[\u4e00-\u9fa5]/.test(txt), '英文表头残留：' + txt.slice(0, 80)); });
+  await t('27 真实失败路径：注入故障→退避→3 次熔断→冷却→半开试探→恢复', async () => { const st = () => api('health:get').then(h => h.find(x => x.id === 'hn'));
+    await api('debug:fault', ['hn']); for (let k = 0; k < 3; k++) { const r = await api('refresh', { only: ['hn'] }); expect(r.find?.(x => x.id === 'hn')?.ok === false || r.busy, '注入故障未生效'); }
+    let h = await st(); expect(h.fails >= 3 && h.open && h.state === 'open' && h.nextAt > Date.now() / 1000, '未熔断：' + JSON.stringify(h));
+    let r = await api('refresh', { due: true, only: ['hn'] }); expect(!(r.find?.(x => x.id === 'hn')), '熔断期内仍被采集');
+    await api('debug:cool', 'hn'); r = await api('refresh', { due: true, only: ['hn'] }); h = await st(); expect(h.state === 'open' && h.probes >= 1, '半开试探失败后应重新熔断：' + JSON.stringify(h));
+    await api('debug:fault', []); await api('debug:cool', 'hn'); r = await api('refresh', { due: true, only: ['hn'] }); h = await st(); expect(h.state === 'closed' && !h.open && h.fails === 0 && h.recovered > 0, '半开试探成功后未恢复：' + JSON.stringify(h)); });
+  await t('28 每日快照自动路径：删除当日快照→dailySnap→自动生成简报', async () => { const before = Date.now(); const b = await api('debug:snap'); expect(b && /每日简报/.test(b.md), '快照后未自动生成简报'); const m = b.md.match(/自动生成于 ([^（]+)/); expect(m, '无生成时间'); });
   await t('23 重启后数据保留：观察、阶段、引导、保存的视图、快照', async () => {
     expect(!(await page.locator('.onb').count()), '重启后又出现引导'); const o = await api('opps:list'); expect(watched.every(id => o.find(x => x.id === id)?.watched), '观察列表丢失');
     expect(o.some(x => x.stage === 'screen'), '阶段丢失'); await nav('机会雷达'); expect(await page.locator('.fbar .chip a', { hasText: '高分' }).count() === 1, '保存的视图丢失'); expect((await api('snap:list')).length >= 20, '快照丢失'); });

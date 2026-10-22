@@ -556,3 +556,14 @@ Windows 包：`release/SignalRadar-Setup-3.7.0-x64.exe`（175,049,369 B）。分
 | 4.2 | 26/26 | 1311/1286 | 29.1 | 每日简报，15 条引用 |
 | 4.3 | 26/26 | 1494/1501 | 31.7 | 英文覆盖 43%→99.6% |
 \* 机器负载导致，未复现。
+
+## v4.4 — 熔断半开试探 + 真实失败路径、快照→简报路径补验证
+**学习**
+- Resilience4j CircuitBreaker：OPEN 冷却到期后进入 HALF_OPEN，只放行 `permittedNumberOfCallsInHalfOpenState` 次试探；成功回 CLOSED，失败回 OPEN；半开窗口总是按次数计 — https://resilience4j.readme.io/docs/circuitbreaker ，https://github.com/resilience4j/resilience4j/issues/1523
+**开源**：Resilience4j（Apache-2.0，Java），只借鉴三态模型，不引入依赖。
+**反思**
+1. v3.8 的「冷却期 = 退避期，到期就当作正常源采集」没有半开状态：恢复后不会记录，试探失败也不会加长冷却。→ 改为三态 closed/open/half：冷却到期后只放行 1 次试探（跳过频率检查）；试探失败重新熔断，冷却翻倍（上限 12h）；试探成功复位，并记录 `recovered` 时间和 `probes` 次数。高/低
+2. 之前从没在真实失败下验证过 → 新增故障注入（仅开发/E2E：`debug:fault`、`debug:cool`），E2E 27 走完整条路径：注入故障 → 3 次失败熔断 → 熔断期内 due 采集被跳过 → 冷却到期半开试探仍失败 → 重新熔断 → 撤掉故障 → 半开试探成功 → 恢复。高/低
+3. 快照后自动生成简报的路径没验证过 → `dailySnap()` 改为返回 Promise；E2E 28 删除当日快照后调用 dailySnap，检查简报是否自动生成。中/低
+**修了一个隐藏问题**：E2E 用的是改名后的 Electron 可执行文件，`app.isPackaged` 为 true，所以调试接口必须用 `SR_E2E=1` 显式开启；打包版不会注册这些接口。
+**E2E**：27/28。27、28 通过；18（共享包导入）超时 1 次，上一次运行时 18 是通过的，判断为负载导致的偶发失败，本轮代码没有改动共享包相关代码。启动 1.08s/1.06s，采集 24.2s。
