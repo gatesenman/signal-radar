@@ -106,6 +106,7 @@ const waitFile = async (re, ms = 20000) => { const t0 = Date.now(); while (Date.
     await api('debug:cool', 'hn'); r = await api('refresh', { due: true, only: ['hn'] }); h = await st(); expect(h.state === 'open' && h.probes >= 1, '半开试探失败后应重新熔断：' + JSON.stringify(h));
     await api('debug:fault', []); await api('debug:cool', 'hn'); r = await api('refresh', { due: true, only: ['hn'] }); h = await st(); expect(h.state === 'closed' && !h.open && h.fails === 0 && h.recovered > 0, '半开试探成功后未恢复：' + JSON.stringify(h)); });
   await t('28 每日快照自动路径：删除当日快照→dailySnap→自动生成简报', async () => { const before = Date.now(); const b = await api('debug:snap'); expect(b && /每日简报/.test(b.md), '快照后未自动生成简报'); const m = b.md.match(/自动生成于 ([^（]+)/); expect(m, '无生成时间'); });
+  await t('29 维度引擎本轮确实运行（防止引擎抛错被静默吞掉）', async () => { const d = await api('dims:get'); expect(d && d.cards?.length > 0 && Date.now() - (d.ts || 0) < 30 * 60e3, '维度结果缺失或过期：ts=' + d?.ts); expect(Array.isArray(d.srcGap), '缺少 srcGap 字段'); });
   await t('23 重启后数据保留：观察、阶段、引导、保存的视图、快照', async () => {
     expect(!(await page.locator('.onb').count()), '重启后又出现引导'); const o = await api('opps:list'); expect(watched.every(id => o.find(x => x.id === id)?.watched), '观察列表丢失');
     expect(o.some(x => x.stage === 'screen'), '阶段丢失'); await nav('机会雷达'); expect(await page.locator('.fbar .chip a', { hasText: '高分' }).count() === 1, '保存的视图丢失'); expect((await api('snap:list')).length >= 20, '快照丢失'); });
