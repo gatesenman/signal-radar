@@ -113,7 +113,16 @@ function personalize(list) { const byId = Object.fromEntries(list.map(o => [o.id
   const on = nFb >= 3; for (const o of list) { if (!on) { o.personal = { on: false, n: nFb, score: o.total }; continue; }
     const c = [...(o.industry ? [['ind:' + o.industry, P['ind:' + o.industry] || 0]] : []), ...(o.terms || []).slice(0, 5).map(t => ['t:' + String(t).toLowerCase(), P['t:' + String(t).toLowerCase()] || 0])].filter(x => x[1]);
     const raw = c.reduce((a, x) => a + x[1], 0), adj = Math.round(8 * Math.tanh(raw / 6)); // 上限 ±8，避免信息茧房
-    o.personal = { on: true, n: nFb, adj, score: Math.max(0, Math.min(100, o.total + adj)), why: c.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 3).map(([k, v]) => (k.startsWith('ind:') ? '行业 ' + k.slice(4) : '主题词 ' + k.slice(2)) + (v > 0 ? ' +' : ' ') + v.toFixed(1)) }; } }
+    o.personal = { on: true, n: nFb, adj, score: Math.max(0, Math.min(100, o.total + adj)), why: c.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 3).map(([k, v]) => (k.startsWith('ind:') ? '行业 ' + k.slice(4) : '主题词 ' + k.slice(2)) + (v > 0 ? ' +' : ' ') + v.toFixed(1)) }; } 
+  // v4.7 探索位：每 5 个位置中的第 4 个，留给「不在你正反馈行业里」的最高分机会（ε-greedy / 多样性重排），防止信息茧房
+  if (!on) return; const liked = new Set(Object.entries(P).filter(([k, v]) => k.startsWith('ind:') && v > 0).map(([k]) => k.slice(4)));
+  const pool = list.filter(o => !o.quality?.noise && !o.stale).sort((a, b) => b.personal.score - a.personal.score), out = [], used = new Set();
+  const exp = pool.filter(o => !liked.has(o.industry) && !o.personal.adj); // 只探索「没有任何反馈」的行业，不推你放弃过的
+  const cnt = {}, cap = 4; // 多样性：每 10 个位置同一行业最多 4 个（候选不够时放宽）
+  for (let p = 0; out.length < pool.length; p++) { let o;
+    if (p % 5 === 3) o = exp.find(x => !used.has(x.id)); if (o) o.personal.explore = true; else o = pool.find(x => !used.has(x.id) && (cnt[(x.industry || '?') + '|' + Math.floor(p / 10)] || 0) < cap) || pool.find(x => !used.has(x.id)); if (!o) break; used.add(o.id); out.push(o); const ck = (o.industry || '?') + '|' + Math.floor(p / 10); cnt[ck] = (cnt[ck] || 0) + 1; }
+  out.forEach((o, i) => o.personal.rank = i + 1); list.filter(o => !used.has(o.id)).forEach(o => o.personal.rank = 9999); }
+
 function getOpps() { const DM = getK('dims')?.oppDims || {}; const macro = { ...(getK('macro') || {}), stats: getK('istats'), chainData: getK('chain') }; const ids = new Set(); const list = all('SELECT json FROM opps ORDER BY total DESC').map(r => { const o = JSON.parse(r.json); ids.add(o.id); const m = merged(o, macro); const dh = DM[o.id] || []; m.dimHits = dh; if (dh.length > 1) { m.dimBoost = 8 * (dh.length - 1); m.total = Math.min(100, m.total + m.dimBoost); } return m; }).sort((a, b) => b.total - a.total);
   for (const r of all('SELECT * FROM workspace')) { const w = JSON.parse(r.json); if (!ids.has(r.opp_id) && w.snapshot && ((w.stage && w.stage !== 'discover') || w.watched)) list.push({ ...merged(w.snapshot, macro), stale: true }); }
   personalize(list); return list; }
