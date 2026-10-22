@@ -54,6 +54,7 @@ export function Dims({ open }) {
   const list = d.cards.filter(c => (dim === 'all' || c.dim === dim) && (!sec || c.sector === sec) && (!multi || c.multi > 1));
   const DN = Object.fromEntries(dl.map(x => [x[0], x]));
   return <><PH icon="stack-line" title="机会维度" sub={`15 个独立发现引擎 · ${d.cards.length} 张机会卡片 · ${Object.values(d.counts).filter(Boolean).length}/15 个维度有命中 · 多维命中 ${d.cards.filter(c => c.multi > 1).length} · 运行于 ${new Date(d.ts || d.at).toLocaleString('zh-CN')}`} />
+    {d.srcGap?.length > 0 && <div className="card mut" style={{ fontSize: 11, marginBottom: 8 }}><I n="information-line" /> 来源配比校正：以下行业弱势一侧的来源覆盖不足，判为「来源缺口」而非市场空白，未出地域套利卡：{d.srcGap.map(g => `${g.ind}（${g.weak}侧该行业信号 ${g.all}、来源 ${g.sources}、验证类来源信号 ${g.valSrcSignals}）`).join('；')}</div>}
     <div className="filters"><button className={dim === 'all' ? '' : 's'} onClick={() => setDim('all')}>全部 {d.cards.length}</button>
       {dl.map(([id, n, ic]) => <button key={id} className={dim === id ? '' : 's'} onClick={() => setDim(id)} title={n}><I n={ic} /> {n} <span className="mut">{d.counts[id] || 0}</span></button>)}
       <label className="chip"><input type="checkbox" checked={multi} onChange={e => setMulti(e.target.checked)} /> 仅多维命中</label>

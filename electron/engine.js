@@ -154,8 +154,8 @@ function mosaic(opps, pool = []) {
   const pct = k => { const v = raw.map(r => r[k]), s = [...v].sort((a, b) => a - b); return v.map(x => s.length > 1 ? (s.filter(y => y < x).length + s.filter(y => y === x).length / 2) / s.length * 100 : 50); };
   const P = { momentum: pct('momentum'), market: pct('market'), money: pct('money'), talent: pct('talent') }, W = { momentum: .4, market: .25, money: .25, talent: .1 };
   opps.forEach((o, i) => { const parts = Object.fromEntries(Object.keys(W).map(k => [k, Math.round(P[k][i])])); const n = o.metrics?.signals || 1, ns = (o.kinds?.news || 0) / n, other = Object.keys(o.kinds || {}).filter(k => k !== 'news' && o.kinds[k] > 0).length;
-    // v3.9 资讯纠偏：新闻占比 >60% 且非新闻证据类型 <2 时，最多扣 30%
-    const newsAdj = ns > .6 && other < 2 ? Math.max(.7, 1 - (ns - .6) * .75) : 1;
+    // v3.9 资讯纠偏（v4.5 收窄，最多扣 25%）
+    const newsAdj = ns > .75 && other < 2 && !(o.fundings || []).length && (o.sources || []).length < 4 ? Math.max(.75, 1 - (ns - .75)) : 1; // v4.5 收窄：仅纯新闻、无融资、来源少的簇
     const Wi = raw[i].talent > 0 ? W : { momentum: .4 / .9, market: .25 / .9, money: .25 / .9, talent: 0 }; // 参照 Mosaic：缺失分项时权重重分配
     o.mosaic = { score: Math.round(Object.entries(Wi).reduce((a, [k, w]) => a + parts[k] * w, 0) * 10 * newsAdj), parts, raw: raw[i], weights: Wi, newsShare: +ns.toFixed(2), newsAdj: +newsAdj.toFixed(2), talentLinked: o.talentLinked }; });
 }

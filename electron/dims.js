@@ -32,6 +32,7 @@ const DIMNAME = Object.fromEntries(DIMS.map(d => [d[0], d[1]]));
 const AMZ = { 'Health and Household': '303010', 'Home and Kitchen': '252010', 'Electronics': '452020', 'Beauty and Personal Care': '303020', 'Baby Products': '303010', 'Pet Supplies': '303010', 'Toys and Games': '252020', 'Sports and Outdoors': '252020', 'Tools and Home Improvement': '201060', 'Automotive': '251010', 'Cell Phones and Accessories': '452020', 'Grocery and Gourmet Food': '302020', 'Office Products': '252010', 'Appliances': '252010' };
 const GENERIC_T = new Set('large model models data based using via new'.split(' '));
 function run({ signals: sigIn, opps, chain, macro, now = Date.now() / 1000 }) {
+  const dimsMeta = {};
   const signals = sigIn.map(s => { if (s.source === "amazon_reviews") { const k = (s.title.match(/Amazon (.+?) 差评/) || [])[1]; if (AMZ[k]) return { ...s, ind: AMZ[k] }; } return s; });
   const FUNDRE = /raises|raised|series [a-e]\b|seed round|pre-seed|融资|轮融|获投|form d/i, fundSigs = signals.filter(s => s.kind === 'funding' || FUNDRE.test(s.title));
   const globalFund = o => { const ts = String(o.title).split(' · ').filter(w => w.length >= 3 && !GENERIC_T.has(w.toLowerCase())).slice(0, 2); return ts.length && fundSigs.filter(s => ts.some(w => s.title.toLowerCase().includes(w.toLowerCase()))).length >= 3; };
@@ -125,11 +126,23 @@ function run({ signals: sigIn, opps, chain, macro, now = Date.now() / 1000 }) {
   for (const r of macro?.comtrade?.rows || []) if (r.g >= 30 && r.v >= 5e9 && !/^9[89]$/.test(String(r.hs))) card('trade', { key: 'hs2:' + r.hs, title: `中国 HS${r.hs} 出口同比 +${r.g}%`, industry: null, score: 40 + Math.min(40, r.g / 2), metrics: { 出口额: '$' + (r.v / 1e9).toFixed(1) + 'B', 同比: r.g + '%' }, rule: 'HS 两位章中国出口同比≥30% 且规模≥$5B', why: '出口高增长品类：上下游配套与出海服务机会', evidence: [{ title: macro.comtrade.name, url: 'https://comtradeplus.un.org/', source: 'comtrade' }] });
   // v4.0 行业级地域套利：同一行业里，一侧已有≥5 条融资/产品验证、另一侧≤1 条（按全库中英比例校正）
   { const V = {}; let tE = 0, tC = 0; for (const s of signals) if (s.ind && (s.kind === 'funding' || s.kind === 'product' || /raises|series [a-d]|融资/i.test(s.title))) { const v = (V[s.ind] ||= { en: [], cn: [] }); (CN(s) ? (tC++, v.cn) : (tE++, v.en)).push(s); }
+    // v4.5 来源配比校正：先看弱势一侧的来源到底有没有覆盖这个行业（全部信号类型），覆盖不足 = 来源缺口，不是市场空白
+    const ALL = {}; for (const s of signals) if (s.ind) { const a = (ALL[s.ind] ||= { en: 0, cn: 0, enS: new Set(), cnS: new Set() }); if (CN(s)) { a.cn++; a.cnS.add(s.source); } else { a.en++; a.enS.add(s.source); } }
+    // 「能产出验证信号的来源」（融资/产品类源）在弱势一侧是否也在报道这个行业——否则弱势侧 0 条只是没人报
+    // 按语言分别统计验证类来源：在该语言一侧产出过 ≥5 条验证信号的来源（不跨语言借用）
+    const VSc = { en: {}, cn: {} }; for (const vv of Object.values(V)) { for (const x of vv.en) VSc.en[x.source] = (VSc.en[x.source] || 0) + 1; for (const x of vv.cn) VSc.cn[x.source] = (VSc.cn[x.source] || 0) + 1; }
+    const VS = { en: new Set(Object.keys(VSc.en).filter(k => VSc.en[k] >= 5)), cn: new Set(Object.keys(VSc.cn).filter(k => VSc.cn[k] >= 5)) };
+    const VI = {}; for (const s of signals) if (s.ind) { const side = CN(s) ? 'cn' : 'en'; if (VS[side].has(s.source)) { const a = (VI[s.ind] ||= { en: 0, cn: 0 }); a[side]++; } }
+    const srcGap = []; dimsMeta.srcGap = srcGap;
     const r = (tC + 1) / (tE + 1); let k = 0;
     for (const [ind, v] of Object.entries(V).sort((a, b) => (b[1].en.length + b[1].cn.length) - (a[1].en.length + a[1].cn.length))) { if (k >= 6 || ind === '551050' || ind === '201040') continue;
       const expCn = v.en.length * r, expEn = v.cn.length / r;
-      if (v.en.length >= 5 && v.cn.length <= 1 && expCn >= 2) { k++; card('geo_arbitrage', { key: 'ind:' + ind + ':cn', title: `${IND[ind]?.cn || ind}：海外已验证，中文侧几乎空白`, industry: ind, score: 45 + Math.min(25, v.en.length * 2) + Math.round(Math.min(10, expCn)), metrics: { 英文侧验证: v.en.length, 中文侧验证: v.cn.length, 按基线应有中文: +expCn.toFixed(1) }, rule: 'v4.0 行业级：英文融资/产品≥5、中文≤1，且按全库中英比例中文侧本应≥2', why: `海外 ${v.en.length} 条融资/产品验证，中文侧 ${v.cn.length} 条（按基线应约 ${expCn.toFixed(1)}）`, direction: '海外→中国', sub: '行业级', evidence: ev(v.en) }); }
-      else if (v.cn.length >= 5 && v.en.length <= 1 && expEn >= 2) { k++; card('geo_arbitrage', { key: 'ind:' + ind + ':en', title: `${IND[ind]?.cn || ind}：中文侧已验证，海外几乎空白`, industry: ind, score: 45 + Math.min(25, v.cn.length * 2) + Math.round(Math.min(10, expEn)), metrics: { 中文侧验证: v.cn.length, 英文侧验证: v.en.length, 按基线应有英文: +expEn.toFixed(1) }, rule: 'v4.0 行业级：中文融资/产品≥5、英文≤1，且按全库中英比例英文侧本应≥2', why: `中文侧 ${v.cn.length} 条验证、海外 ${v.en.length} 条 → 可出海`, direction: '中国→海外', sub: '行业级', evidence: ev(v.cn) }); } } }
+      const A = ALL[ind] || { en: 0, cn: 0, enS: new Set(), cnS: new Set() }, shE = v.en.length / Math.max(1, A.en), shC = v.cn.length / Math.max(1, A.cn);
+      const vi = VI[ind] || { en: 0, cn: 0 };
+      if (v.en.length >= 5 && v.cn.length <= 1 && (A.cn < 15 || A.cnS.size < 2 || vi.cn < 8)) { srcGap.push({ ind, weak: '中文', all: A.cn, sources: A.cnS.size, valSrcSignals: vi.cn }); continue; }
+      if (v.cn.length >= 5 && v.en.length <= 1 && (A.en < 15 || A.enS.size < 2 || vi.en < 8)) { srcGap.push({ ind, weak: '英文', all: A.en, sources: A.enS.size, valSrcSignals: vi.en }); continue; }
+      if (v.en.length >= 5 && v.cn.length <= 1 && expCn >= 2 && shE >= 3 * shC) { k++; card('geo_arbitrage', { key: 'ind:' + ind + ':cn', title: `${IND[ind]?.cn || ind}：海外已验证，中文侧几乎空白`, industry: ind, score: 45 + Math.min(25, v.en.length * 2) + Math.round(Math.min(10, expCn)), metrics: { 英文侧验证: v.en.length, 中文侧验证: v.cn.length, 按基线应有中文: +expCn.toFixed(1), 中文侧该行业信号: A.cn, 中文侧来源数: A.cnS.size }, rule: 'v4.5 行业级：英文验证≥5、中文≤1；中文侧该行业信号≥15、来源≥2、融资/产品类来源在该行业≥8 条（排除来源缺口）；英文验证占比≥中文 3 倍', why: `海外 ${v.en.length} 条融资/产品验证，中文侧 ${v.cn.length} 条（按基线应约 ${expCn.toFixed(1)}）`, direction: '海外→中国', sub: '行业级', evidence: ev(v.en) }); }
+      else if (v.cn.length >= 5 && v.en.length <= 1 && expEn >= 2 && shC >= 3 * shE) { k++; card('geo_arbitrage', { key: 'ind:' + ind + ':en', title: `${IND[ind]?.cn || ind}：中文侧已验证，海外几乎空白`, industry: ind, score: 45 + Math.min(25, v.cn.length * 2) + Math.round(Math.min(10, expEn)), metrics: { 中文侧验证: v.cn.length, 英文侧验证: v.en.length, 按基线应有英文: +expEn.toFixed(1), 英文侧该行业信号: A.en, 英文侧来源数: A.enS.size }, rule: 'v4.5 行业级：中文验证≥5、英文≤1；英文侧该行业信号≥15、来源≥2、融资/产品类来源在该行业≥8 条（排除来源缺口）；中文验证占比≥英文 3 倍', why: `中文侧 ${v.cn.length} 条验证、海外 ${v.en.length} 条 → 可出海`, direction: '中国→海外', sub: '行业级', evidence: ev(v.cn) }); } } }
   // 14 商业模式迁移：模式在≥3 个行业已被融资/产品验证，但在需求旺盛的行业中几乎没有
   const mi = {}; for (const s of signals) if (s.ind && (s.kind === 'funding' || s.kind === 'product' || /raises|融资/i.test(s.title))) for (const [mn, re] of MODELS) if (re.test(text(s))) ((mi[mn] ||= {})[s.ind] ||= []).push(s);
   const demInd = {}, demSrc = {}, mkt = {}; for (const s of signals) if (s.ind) { if ((DEMAND.has(s.source) || s.kind === 'community') && s.source !== 'amazon_reviews') { demInd[s.ind] = (demInd[s.ind] || 0) + 1; (demSrc[s.ind] ||= new Set()).add(s.source); } if (s.kind === 'funding' || s.kind === 'product') mkt[s.ind] = (mkt[s.ind] || 0) + 1; }
@@ -154,6 +167,6 @@ function run({ signals: sigIn, opps, chain, macro, now = Date.now() / 1000 }) {
   for (const c of cards) { const k = c.oppId ? byOpp[c.oppId].size : 1; c.dimsHit = c.oppId ? [...byOpp[c.oppId]] : [c.dim]; c.multi = k; c.final = clamp(c.score + 8 * (k - 1)); c.sector = IND[c.industry]?.sector || '—'; c.sectorCn = IND[c.industry]?.sectorCn || '未分类'; c.sectorEn = IND[c.industry]?.sectorEn || 'Unclassified'; c.industryName = IND[c.industry]?.cn || '未分类'; c.industryNameEn = IND[c.industry]?.en || 'Unclassified'; }
   cards.sort((a, b) => b.final - a.final);
   const matrix = {}; for (const c of cards) { const k = c.dim + '|' + c.sector; matrix[k] = (matrix[k] || 0) + 1; }
-  return { ts: Date.now(), dims: DIMS, cards, matrix, oppDims: Object.fromEntries(Object.entries(byOpp).map(([k, v]) => [k, [...v]])), counts: Object.fromEntries(DIMS.map(([d]) => [d, cards.filter(c => c.dim === d).length])) };
+  return { ts: Date.now(), srcGap: dimsMeta.srcGap || [], dims: DIMS, cards, matrix, oppDims: Object.fromEntries(Object.entries(byOpp).map(([k, v]) => [k, [...v]])), counts: Object.fromEntries(DIMS.map(([d]) => [d, cards.filter(c => c.dim === d).length])) };
 }
 module.exports = { run, DIMS, DIMNAME };
