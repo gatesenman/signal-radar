@@ -6,7 +6,7 @@ const E = require('./engine'), EMB = require('./embed'), M = require('./macro'),
 const { INDUSTRIES, SECTORS, GB } = require('./industries');
 
 let lastDims = null, db, dbFile, win, timer, busy = false, saveT, lastCluster = {};
-const DEFAULTS = { disabledSources: ['ccnews', 'cc_cdx', 'amazon_reviews', 'wayback'], keywords: 'ai agent, humanoid robot, energy storage, glp-1, elder care', skills: '', autoRefresh: false, llmProvider: 'none', openaiBase: 'https://api.openai.com/v1', openaiKey: '', openaiModel: 'gpt-4o-mini', ollamaUrl: 'http://localhost:11434', ollamaModel: 'qwen2.5', githubToken: '', xBearer: '', phToken: '', crunchbaseKey: '', patentsviewKey: '', samKey: '', fredKey: '', censusKey: '', estatKey: '', coreKey: '', s2Key: '', opencorporatesKey: '', companiesHouseKey: '', openalexKey: '', userName: '', clusterSim: 0.6,
+const DEFAULTS = { disabledSources: ['ccnews', 'cc_cdx', 'amazon_reviews', 'wayback'], keywords: 'ai agent, humanoid robot, energy storage, glp-1, elder care', skills: '', autoRefresh: true, llmProvider: 'none', openaiBase: 'https://api.openai.com/v1', openaiKey: '', openaiModel: 'gpt-4o-mini', ollamaUrl: 'http://localhost:11434', ollamaModel: 'qwen2.5', githubToken: '', xBearer: '', phToken: '', crunchbaseKey: '', patentsviewKey: '', samKey: '', fredKey: '', censusKey: '', estatKey: '', coreKey: '', s2Key: '', opencorporatesKey: '', companiesHouseKey: '', openalexKey: '', userName: '', clusterSim: 0.6,
   ccNewsFiles: 1, ccNewsMBPerFile: 40, ccDiskMB: 200, cdxTlds: 'ai,io', cdxPaths: '/pricing,/careers', cdxDomains: '', ghaHours: 2, ghaMBPerHour: 150, amazonCats: 'Health_and_Household,Home_and_Kitchen,Electronics,Pet_Supplies,Baby_Products', amazonMBPerCat: 8, sectorQueriesPerRun: 74, weights: {} };
 
 function save(now) { clearTimeout(saveT); const f = () => fs.writeFileSync(dbFile, Buffer.from(db.export())); if (now) f(); else saveT = setTimeout(f, 800); }
@@ -351,6 +351,18 @@ app.whenReady().then(async () => {
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
   await win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   schedule();
+  // v5.0：安装包不带演示数据；signals 为空时后台自动采集，不阻塞窗口显示
+  // 稍延迟，等渲染进程挂上 progress 监听后再发事件
+  setTimeout(() => {
+    try {
+      const n0 = (all('SELECT COUNT(*) n FROM signals')[0] || {}).n || 0;
+      if (n0 === 0 && !process.env.SR_NOFETCH && !process.env.SR_SHOT) {
+        log('首次启动，开始自动采集…');
+        send('progress', { id: '_boot', state: 'running' });
+        refresh({}).catch(e => log('首次自动采集失败：' + (e.message || e)));
+      }
+    } catch (e) { log('首次启动检查失败：' + (e.message || e)); }
+  }, 800);
   if (process.env.SR_SHOT) { const dir = process.env.SR_SHOT; fs.mkdirSync(dir, { recursive: true });
     win.webContents.on('console-message', (e, l, m) => l >= 2 && console.log('[renderer]', m));
     if (!process.env.SR_NOFETCH) console.log(JSON.stringify(await refresh(process.env.SR_ONLY ? { only: process.env.SR_ONLY.split(',') } : {})));
@@ -368,6 +380,7 @@ if (!app.isPackaged || process.env.SR_E2E === '1') { // 仅开发/测试：注�
   ipcMain.handle('debug:fault', (_e, ids) => { FAULT.clear(); (ids || []).forEach(x => FAULT.add(x)); return [...FAULT]; });
   ipcMain.handle('debug:cool', (_e, id) => { const H = getK('srcHealth', {}); if (H[id]) { H[id].nextAt = 0; setK('srcHealth', H); } return H[id]; });
   ipcMain.handle('debug:snap', async () => { run('DELETE FROM snapshots WHERE day=?', [dayOf()]); await dailySnap(); return getK('lastBrief'); }); }
+ipcMain.handle('busy:get', () => !!busy);
 ipcMain.handle('health:get', () => { const H = getK('srcHealth', {}), since = Math.floor(Date.now() / 1000) - 7 * 86400;
   return Object.keys(SOURCES).map(id => { const r = all('SELECT COUNT(*) n, SUM(ok) k FROM runs WHERE source=? AND ts>?', [id, since])[0] || {}; const h = H[id] || {};
     return { id, runs7d: r.n || 0, okRate: r.n ? (r.k || 0) / r.n : null, fails: h.fails || 0, open: !!h.open, state: h.state || 'closed', probes: h.probes || 0, recovered: h.recovered || 0, nextAt: h.nextAt || 0, lastOk: h.lastOk || 0, lastErr: h.lastErr || '' }; }); });
