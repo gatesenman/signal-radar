@@ -1,0 +1,186 @@
+{
+  "name": "signal-radar",
+  "version": "5.0.0",
+  "description": "商机雷达 Signal Radar - AI 创业机会发现桌面应用",
+  "main": "electron/main.js",
+  "author": "GAOSICHUN",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev:web": "vite",
+    "build:web": "vite build",
+    "start": "vite build && electron .",
+    "pack:linux": "vite build && electron-builder --linux AppImage tar.gz",
+    "pack:win": "vite build && electron-builder --win nsis",
+    "pack:mac": "vite build && electron-builder --mac dmg"
+  },
+  "build": {
+    "appId": "com.gaosichun.signalradar",
+    "productName": "SignalRadar",
+    "files": [
+      "dist/index.html",
+      "electron/**",
+      "node_modules/sql.js/dist/sql-wasm.wasm",
+      "node_modules/sql.js/dist/sql-wasm.js",
+      "node_modules/sql.js/package.json",
+      "package.json",
+      "dist/assets/**",
+      "build/icon.png",
+      "node_modules/onnxruntime-node/**",
+      "node_modules/onnxruntime-common/**",
+      "node_modules/@huggingface/transformers/**"
+    ],
+    "asarUnpack": [
+      "node_modules/sql.js/dist/**",
+      "node_modules/onnxruntime-node/**",
+      "node_modules/@huggingface/transformers/**",
+      "node_modules/sharp/**",
+      "node_modules/@img/**"
+    ],
+    "linux": {
+      "category": "Office",
+      "target": [
+        "AppImage",
+        "tar.gz"
+      ],
+      "desktop": {
+        "entry": {
+          "Name": "SignalRadar"
+        }
+      },
+      "icon": "build/icons",
+      "files": [
+        "dist/index.html",
+        "electron/**",
+        "node_modules/sql.js/dist/sql-wasm.wasm",
+        "node_modules/sql.js/dist/sql-wasm.js",
+        "node_modules/sql.js/package.json",
+        "package.json",
+        "dist/assets/**",
+        "build/icon.png",
+        "node_modules/onnxruntime-node/**",
+        "node_modules/onnxruntime-common/**",
+        "node_modules/@huggingface/transformers/**",
+        "!node_modules/onnxruntime-node/bin/napi-v*/win32/**",
+        "!node_modules/onnxruntime-node/bin/napi-v*/darwin/**",
+        "!node_modules/@img/sharp-win32*/**",
+        "!**/*cuda*",
+        "!node_modules/remixicon/**",
+        "!node_modules/onnxruntime-web/lib/**",
+        "!node_modules/onnxruntime-web/node_modules/**",
+        "!node_modules/onnxruntime-web/dist/!(ort.webgpu.bundle.min.mjs)",
+        "!node_modules/@huggingface/transformers/dist/transformers.web*",
+        "!node_modules/@huggingface/transformers/dist/transformers.js",
+        "!node_modules/@huggingface/transformers/dist/transformers.min.js",
+        "!node_modules/@huggingface/transformers/src/**",
+        "!node_modules/sql.js/dist/sql-asm*",
+        "!node_modules/sql.js/dist/*.zip",
+        "!node_modules/sql.js/dist/*debug*",
+        "!node_modules/sql.js/dist/*inline*",
+        "!node_modules/sql.js/dist/worker.*",
+        "!node_modules/sql.js/dist/*browser*",
+        "!**/*.map",
+        "!**/*.d.ts"
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "files": [
+        "dist/index.html",
+        "electron/**",
+        "node_modules/sql.js/dist/sql-wasm.wasm",
+        "node_modules/sql.js/dist/sql-wasm.js",
+        "node_modules/sql.js/package.json",
+        "package.json",
+        "dist/assets/**",
+        "build/icon.png",
+        "node_modules/onnxruntime-node/**",
+        "node_modules/onnxruntime-common/**",
+        "node_modules/@huggingface/transformers/**",
+        "!node_modules/onnxruntime-node/bin/napi-v*/linux/**",
+        "!node_modules/onnxruntime-node/bin/napi-v*/darwin/**",
+        "!node_modules/@img/sharp-linux*/**",
+        "!node_modules/@img/sharp-libvips-linux*/**",
+        "!**/*cuda*",
+        "!**/*tensorrt*",
+        "!node_modules/onnxruntime-node/bin/napi-v*/win32/arm64/**",
+        "!node_modules/remixicon/**",
+        "!node_modules/onnxruntime-web/lib/**",
+        "!node_modules/onnxruntime-web/node_modules/**",
+        "!node_modules/onnxruntime-web/dist/!(ort.webgpu.bundle.min.mjs)",
+        "!node_modules/@huggingface/transformers/dist/transformers.web*",
+        "!node_modules/@huggingface/transformers/dist/transformers.js",
+        "!node_modules/@huggingface/transformers/dist/transformers.min.js",
+        "!node_modules/@huggingface/transformers/src/**",
+        "!node_modules/sql.js/dist/sql-asm*",
+        "!node_modules/sql.js/dist/*.zip",
+        "!node_modules/sql.js/dist/*debug*",
+        "!node_modules/sql.js/dist/*inline*",
+        "!node_modules/sql.js/dist/worker.*",
+        "!node_modules/sql.js/dist/*browser*",
+        "!**/*.map",
+        "!**/*.d.ts"
+      ]
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.business"
+    },
+    "directories": {
+      "output": "release"
+    },
+    "icon": "build/icon.png",
+    "extraResources": [
+      {
+        "from": "models",
+        "to": "models",
+        "filter": [
+          "**/*",
+          "!**/*.box-store-snap*"
+        ]
+      }
+    ],
+    "npmRebuild": false,
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "shortcutName": "商机雷达 SignalRadar",
+      "artifactName": "SignalRadar-Setup-${version}-x64.${ext}"
+    },
+    "compression": "maximum"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.3.1",
+    "fast-xml-parser": "^5.11.2",
+    "remixicon": "^4.9.1",
+    "sql.js": "^1.15.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.2",
+    "echarts": "^6.1.0",
+    "electron": "^33.4.11",
+    "electron-builder": "^26.15.3",
+    "playwright": "1.56",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "vite": "^8.3.5"
+  },
+  "desktopName": "signal-radar.desktop",
+  "optionalDependencies": {
+    "@img/sharp-win32-x64": "0.35.5"
+  }
+}

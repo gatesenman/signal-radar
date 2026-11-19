@@ -1,0 +1,18 @@
+/* 设计令牌：间距 / 字号 / 圆角 / 颜色（暗色默认，亮色覆盖）。对比度按 WCAG AA：正文 ≥4.5:1，次要文字 ≥4.5:1 */
+:root{
+  --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:24px;
+  --fs-xs:11px;--fs-sm:12px;--fs-md:12.5px;--fs-lg:14px;--fs-xl:17px;--fs-kpi:21px;
+  --r:6px;--r-sm:4px;--g:var(--sp-3);--fs:var(--fs-md);
+  --bg:#0b0f17;--bg-chrome:#070a10;--bg2:#0e131d;--panel:#111827;--panel2:#0d1422;--input:#0b1220;--pop:#151c2a;
+  --hover:#1a2233;--sel:#1a2540;--line:#1e293b;--line2:#2b3a55;--row:#182133;--scroll:#2b3a55;
+  --tx:#d7deea;--tx-strong:#ffffff;--tx2:#a9b4c6;--mut:#8b96aa;--mut2:#7a869b;
+  --ac:#2563eb;--ac-h:#1d4ed8;--ac2:#7c3aed;--on-ac:#ffffff;--link:#93b4ff;
+  --ok:#34d399;--ok-bg:#0f2a22;--ok-bd:#14532d;--warn:#fbbf24;--warn-bg:#2d200b;--warn-bd:#78350f;--bad:#f87171;--bad-bg:#2d1212;--bad-bd:#7f1d1d;--pur:#c4a3ff;--pur-bg:#251a3d;--info-bg:#1c2740;
+  --c1:#3b82f6;--c2:#22d3ee;--c3:#a78bfa;--c4:#fbbf24;--c5:#34d399;--c6:#f472b6;--c7:#fb923c;--c8:#94a3b8;--heat0:#16223a;--heat1:#1d4ed8;--heat2:#22d3ee;--heat3:#fbbf24;--shadow:0 10px 30px rgba(0,0,0,.5);--overlay:rgba(0,0,0,.55);color-scheme:dark}
+[data-theme=light]{
+  --bg:#f5f7fb;--bg-chrome:#e9edf4;--bg2:#eef1f6;--panel:#ffffff;--panel2:#f7f9fc;--input:#ffffff;--pop:#ffffff;
+  --hover:#e3e8f1;--sel:#dbe6ff;--line:#dde3ec;--line2:#c8d1de;--row:#eceff5;--scroll:#c3ccd9;
+  --tx:#1c2433;--tx-strong:#0b1220;--tx2:#3d4757;--mut:#4a5568;--mut2:#5a6578; /* v3.7 P2-7 浅色对比度 */
+  --ac:#2563eb;--ac-h:#1d4ed8;--ac2:#6d28d9;--on-ac:#ffffff;--link:#1d4ed8;
+  --ok:#047857;--ok-bg:#e3f7ee;--ok-bd:#9fdcc0;--warn:#a15c07;--warn-bg:#fdf3dc;--warn-bd:#f0cf86;--bad:#b91c1c;--bad-bg:#fde8e8;--bad-bd:#f3b4b4;--pur:#6d28d9;--pur-bg:#efe7ff;--info-bg:#e3ecff;
+  --c1:#2563eb;--c2:#0891b2;--c3:#7c3aed;--c4:#d97706;--c5:#059669;--c6:#db2777;--c7:#ea580c;--c8:#64748b;--heat0:#eef2f8;--heat1:#93c5fd;--heat2:#2563eb;--heat3:#b45309;--shadow:0 10px 30px rgba(15,23,42,.15);--overlay:rgba(15,23,42,.35);color-scheme:light}
