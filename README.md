@@ -17,19 +17,17 @@
 
 ## 从源码运行
 
-源码在 `src/`。本仓库不包含安装包。`package.json` 版本为 5.0.0。
+源码在仓库根目录。本仓库不包含安装包。`package.json` 版本为 5.0.0。
 
 ```bash
-cd src
 npm install
 npm start            # 先 vite build，再启动 Electron
 ```
-
-使用说明见 `src/README.md`（其中若出现旧版安装包文件名，以本仓库源码为准）。
+使用说明见 `README.original.md`（其中若出现旧版安装包文件名，以本仓库源码为准）。
 
 ## 文档
 
-- [源码 README](src/README.md)
+- [源码 README](README.original.md)
 
 ---
 
@@ -54,17 +52,15 @@ npm start            # 先 vite build，再启动 Electron
 
 ## Getting started
 
-Source is under `src/`. This repository does not include installers. `package.json` reports version 5.0.0.
+Source is at the repository root. This repository does not include installers. `package.json` reports version 5.0.0.
 
 ```bash
-cd src
 npm install
 npm start            # vite build, then Electron
 ```
-
-See `src/README.md` for usage. If that file mentions older installer names, use the source in this repository instead.
+See `README.original.md` for usage. If that file mentions older installer names, use the source in this repository instead.
 
 ## Documentation
 
-- [源码 README](src/README.md)
+- [源码 README](README.original.md)
 
