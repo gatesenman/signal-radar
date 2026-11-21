@@ -23,11 +23,17 @@
 npm install
 npm start            # 先 vite build，再启动 Electron
 ```
-使用说明见 `README.original.md`（其中若出现旧版安装包文件名，以本仓库源码为准）。
+使用说明。（其中若出现旧版安装包文件名，以本仓库源码为准）。
 
 ## 文档
 
-- [源码 README](README.original.md)
+## 贡献
+
+欢迎通过 Issue 和 Pull Request 参与，详见 [CONTRIBUTING.md](CONTRIBUTING.md)。安全问题请按 [SECURITY.md](SECURITY.md) 私下报告。参与时请遵守 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
+
+## 许可证
+
+本仓库尚未附带 LICENSE 文件，许可证未指定。
 
 ---
 
@@ -58,9 +64,14 @@ Source is at the repository root. This repository does not include installers. `
 npm install
 npm start            # vite build, then Electron
 ```
-See `README.original.md` for usage. If that file mentions older installer names, use the source in this repository instead.
+. If that file mentions older installer names, use the source in this repository instead.
 
 ## Documentation
 
-- [源码 README](README.original.md)
+## Contributing
 
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Please report vulnerabilities privately via [SECURITY.md](SECURITY.md). This project follows [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+## License
+
+No LICENSE file is included in this repository; the license is unspecified.
