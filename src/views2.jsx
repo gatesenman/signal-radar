@@ -1,11 +1,23 @@
 import { React, useEffect, useState, api, I, CATC, STAGES, fmt, Src, L, Bar, PH, Empty, Chart, radarOpt, D } from './ui.jsx';
-export function Board({ opps, open, upd, oppCtx, say }) {
-  const [over, setOver] = useState(null);
+export function Board({ opps, open, upd, oppCtx, say, refresh, busy, stats }) {
+  const [over, setOver] = useState(null), [mode, setMode] = useState('board'), [preview, setPreview] = useState(null);
   const drop = async (e, k) => { e.preventDefault(); setOver(null); const id = e.dataTransfer.getData('text/opp'); if (id) { await upd(id, { stage: k }); say?.('已移到「' + STAGES.find(s => s[0] === k)[1] + '」'); } };
-  return <><PH icon="kanban-view" title="机会看板" sub="拖拽卡片切换阶段：发现 → 初筛 → 深研 → 验证 → 立项 / 放弃；也可右键移动" />
+  const exp = async fmt => { const p = await api.call('pipeline:export', fmt); if (fmt === 'preview') setPreview(p); else p && say?.('已导出：' + p); };
+  const live = opps.filter(o => !o.quality?.noise);
+  if (!stats?.total && !live.length) return <><PH icon="kanban-view" title="机会看板" sub="阶段保存在本机数据库，关闭应用也不会丢" /><Empty refresh={refresh} busy={busy} text={busy ? '首次采集进行中，请稍候…聚类完成后机会会按「发现」进入管道。' : '还没有机会。请先采集并等待聚类，或从收件箱把信号分拣进来。'} /></>;
+  return <><PH icon="kanban-view" title="机会看板" sub="拖拽卡片切换阶段：发现 → 初筛 → 深研 → 验证 → 立项 / 放弃。阶段写入本机数据库。也可导出 CSV 或打开可打印清单。">
+    <div className="seg"><button className={mode === 'board' ? 'on' : ''} onClick={() => setMode('board')}>看板</button><button className={mode === 'list' ? 'on' : ''} onClick={() => setMode('list')}>列表</button></div>
+    <button className="s" onClick={() => exp('csv')}><I n="file-excel-2-line" />导出 CSV</button>
+    <button className="s" onClick={() => exp('html')}><I n="file-text-line" />导出 HTML</button>
+    <button className="s" onClick={() => exp('preview')}>可打印预览</button>
+  </PH>
+    {preview && <div className="modal" onClick={() => setPreview(null)}><div className="card wb-preview" onClick={e => e.stopPropagation()} style={{ width: 'min(960px, 92vw)' }}><div className="row"><b>管道清单预览</b><span className="sp" /><button className="s" onClick={() => { const f = document.getElementById('pipe-print'); f?.contentWindow?.print(); }}>打印</button><button className="x" onClick={() => setPreview(null)}><I n="close-line" /></button></div><iframe id="pipe-print" title="管道清单" srcDoc={preview} /></div></div>}
+    {mode === 'list' ? <div className="card"><table className="dt"><thead><tr><th>机会</th><th>行业</th><th>阶段</th><th className="num">综合分</th><th className="num">未完成任务</th><th>最近到期</th><th>备注</th></tr></thead>
+      <tbody>{live.map(o => { const openT = (o.tasks || []).filter(t => !t.done); const next = openT.map(t => t.due).filter(Boolean).sort()[0] || '—'; return <tr key={o.id} onClick={() => open(o.id, 'work')} onContextMenu={e => oppCtx(e, o)}><td><b>{o.title}</b></td><td>{o.industryName}</td><td><select value={o.stage || 'discover'} onClick={e => e.stopPropagation()} onChange={e => upd(o.id, { stage: e.target.value })}>{STAGES.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></td><td className="num">{o.total}</td><td className="num">{openT.length}</td><td>{next}</td><td className="mut">{(o.notes || '').slice(0, 80)}</td></tr>; })}</tbody></table></div> :
     <div className="kanban">{STAGES.map(([k, n, ic]) => { const list = opps.filter(o => (o.stage === 'research' && k === 'research') || o.stage === k); return <div key={k} data-stage={k} className={'col' + (over === k ? ' over' : '')} onDragOver={e => { e.preventDefault(); setOver(k); }} onDragLeave={() => setOver(null)} onDrop={e => drop(e, k)}><h4><I n={ic.slice(3)} />{n}<span className="cnt">{list.length}</span></h4>
       {!list.length && <div className="mut" style={{ fontSize: 11, padding: 8, textAlign: 'center' }}>拖到这里</div>}
-      {list.slice(0, 60).map(o => <div key={o.id} data-opp={o.id} className="card" draggable onDragStart={e => { e.dataTransfer.setData('text/opp', o.id); e.dataTransfer.effectAllowed = 'move'; }} onDoubleClick={() => open(o.id)} onContextMenu={e => oppCtx(e, o)}><b>{o.title}</b><div className="mut">{o.industryName}</div><div className="row"><span className="score">{o.total}</span><span className="sp" /><I n={o.watched ? 'star-fill' : 'star-line'} c={o.watched ? 'var(--warn)' : 'var(--mut)'} /></div></div>)}</div>; })}</div></>;
+      {list.slice(0, 60).map(o => <div key={o.id} data-opp={o.id} className="card" draggable onDragStart={e => { e.dataTransfer.setData('text/opp', o.id); e.dataTransfer.effectAllowed = 'move'; }} onDoubleClick={() => open(o.id, 'work')} onContextMenu={e => oppCtx(e, o)}><b>{o.title}</b><div className="mut">{o.industryName}</div><div className="row"><span className="score">{o.total}</span>{(o.tasks || []).filter(t => !t.done).length ? <span className="tag n">{(o.tasks || []).filter(t => !t.done).length} 待办</span> : null}<span className="sp" /><I n={o.watched ? 'star-fill' : 'star-line'} c={o.watched ? 'var(--warn)' : 'var(--mut)'} /></div></div>)}</div>; })}</div>}
+  </>;
 }
 export function Validate({ opps, open, upd, say }) {
   const watched = opps.filter(o => o.watched || o.stage === 'validate' || o.stage === 'research');

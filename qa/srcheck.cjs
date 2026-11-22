@@ -7,7 +7,7 @@ const initSql = require(path.join(APP, 'node_modules/sql.js'));
 const results = []; let app, page; const consoleErrors = [];
 const startups = [];
 async function launch() { const t0 = Date.now();
-  app = await electron.launch({ ...(process.env.E2E_EL ? { executablePath: process.env.E2E_EL } : {}), args: [APP, '--no-sandbox', '--user-data-dir=' + UD], env: { ...process.env, SR_DB: DB, SR_ONLY: process.env.E2E_ONLY || 'hn,arxiv' }, timeout: 60000 });
+  app = await electron.launch({ ...(process.env.E2E_EL ? { executablePath: process.env.E2E_EL } : {}), args: [APP, '--no-sandbox', '--user-data-dir=' + UD], env: { ...process.env, SR_E2E: '1', SR_DB: DB, SR_ONLY: process.env.E2E_ONLY || 'hn,arxiv' }, timeout: 60000 });
   page = await app.firstWindow(); page.setDefaultTimeout(120000); page.on('console', m => m.type() === 'error' && consoleErrors.push(m.text())); page.on('pageerror', e => consoleErrors.push('pageerror: ' + e.message));
   await page.waitForSelector('nav a', { timeout: 120000 }); startups.push(Date.now() - t0);
   await app.evaluate(({ dialog, session }, out) => { let n = 0; const J = (a, b) => a + '/' + String(b).split(/[\\/]/).pop(); dialog.showSaveDialog = async (w, o) => ({ canceled: false, filePath: J(out, (o || w)?.defaultPath || 'file' + (++n)) });
@@ -38,7 +38,7 @@ const waitFile = async (re, ms = 20000) => { const t0 = Date.now(); while (Date.
   await t('03 聚类：「重新聚类」+ 维度引擎 + 当日快照', async () => {
     await page.locator('.toolbar button', { hasText: '重新聚类' }).click(); await page.waitForSelector('.toast:has-text("已重新语义聚类")', { timeout: 900000 });
     const d = await api('dims:get'); expect(d.cards.length > 10, '维度卡片过少 ' + d.cards.length); const l = await api('snap:list'); expect(l.some(s => s.day === new Date().toLocaleDateString('sv-SE') && !s.backfill), '未生成今日快照'); });
-  const VIEWS = ['总览', '机会维度', '信号流', '不对称信息', '机会雷达', '行业覆盖度', '机会详情', '产业链', '论文与统计', '宏观与贸易', '资本与融资', '验证工作流', '机会对比', '机会看板', '报告与 IC 备忘录', '发现日历', '观察列表', '提醒', '数据源', '共享协作', '运行日志', '设置'];
+  const VIEWS = ['工作台', '收件箱', '工作简报', '总览', '机会维度', '信号流', '不对称信息', '机会雷达', '行业覆盖度', '机会详情', '产业链', '论文与统计', '宏观与贸易', '资本与融资', '验证工作流', '机会对比', '机会看板', '报告与 IC 备忘录', '发现日历', '观察列表', '提醒', '数据源', '共享协作', '运行日志', '设置'];
   await t('04 全部 ' + VIEWS.length + ' 个视图切换无渲染错误', async () => { const bad = []; for (const v of VIEWS) { await nav(v); if (await page.locator('.err').count()) bad.push(v); const h = await page.locator('.ph h1').count(); if (!h) bad.push(v + '(无标题)'); } expect(!bad.length, '出错视图：' + bad.join(',')); });
   await t('05 命令面板 Ctrl+K：搜索并跳转视图、搜索机会', async () => {
     await page.keyboard.press('Control+k'); await page.waitForSelector('.palette input'); await page.keyboard.type('产业链'); await page.keyboard.press('Enter'); await page.waitForTimeout(500); expect((await h1()).includes('产业链'), '未跳转产业链');
@@ -95,6 +95,22 @@ const waitFile = async (re, ms = 20000) => { const t0 = Date.now(); while (Date.
     const expectN = today.opps.filter(o => today.diff.new.includes(o.id) && o.total >= 75).length; expect(snapN >= expectN, `应有 ${expectN} 条快照提醒，实际 ${snapN}`); });
   // 重启：数据与本地偏好是否保留
   const watched = (await api('opps:list')).filter(o => o.watched).map(o => o.id); await app.close(); await launch();
+  await t('24 每日简报：生成 md（含引用段），总览卡片可见', async () => { const b = await api('brief:daily', true); expect(b && /每日简报/.test(b.md) && /## 引用/.test(b.md), '简报内容缺失'); expect(fs.existsSync(b.file), '简报文件未写入'); await nav('总览'); await page.waitForTimeout(500); expect(await page.locator('.brief').count(), '总览无简报卡片'); });
+  await t('25 采集健康：health:get 返回每个源的退避/熔断字段', async () => { const h = await api('health:get'); expect(Array.isArray(h) && h.length > 10 && 'open' in h[0] && 'okRate' in h[0], 'health 结构不对'); });
+  await t('26 融资页/宏观页为 DataTable，英文模式下表头无中文残留', async () => { await nav('资本与融资'); expect(await page.locator('.dt, table').count(), '融资页无表格'); await page.locator('.toolbar button[title*="English"]').click(); await page.waitForTimeout(500);
+    const hd = await page.locator('main thead, .main thead').allInnerTexts().catch(() => []); const txt = (hd.join(' ') || await page.locator('thead').first().innerText()); await page.locator('.toolbar button[title*="English"]').click(); expect(!/[\u4e00-\u9fa5]/.test(txt), '英文表头残留：' + txt.slice(0, 80)); });
+  await t('27 真实失败路径：注入故障→退避→3 次熔断→冷却→半开试探→恢复', async () => { const st = () => api('health:get').then(h => h.find(x => x.id === 'hn'));
+    await api('debug:fault', ['hn']); for (let k = 0; k < 3; k++) { const r = await api('refresh', { only: ['hn'] }); expect(r.find?.(x => x.id === 'hn')?.ok === false || r.busy, '注入故障未生效'); }
+    let h = await st(); expect(h.fails >= 3 && h.open && h.state === 'open' && h.nextAt > Date.now() / 1000, '未熔断：' + JSON.stringify(h));
+    let r = await api('refresh', { due: true, only: ['hn'] }); expect(!(r.find?.(x => x.id === 'hn')), '熔断期内仍被采集');
+    await api('debug:cool', 'hn'); r = await api('refresh', { due: true, only: ['hn'] }); h = await st(); expect(h.state === 'open' && h.probes >= 1, '半开试探失败后应重新熔断：' + JSON.stringify(h));
+    await api('debug:fault', []); await api('debug:cool', 'hn'); r = await api('refresh', { due: true, only: ['hn'] }); h = await st(); expect(h.state === 'closed' && !h.open && h.fails === 0 && h.recovered > 0, '半开试探成功后未恢复：' + JSON.stringify(h)); });
+  await t('28 每日快照自动路径：删除当日快照→dailySnap→自动生成简报', async () => { const before = Date.now(); const b = await api('debug:snap'); expect(b && /每日简报/.test(b.md), '快照后未自动生成简报'); const m = b.md.match(/自动生成于 ([^（]+)/); expect(m, '无生成时间'); });
+  await t('29 维度引擎本轮确实运行（防止引擎抛错被静默吞掉）', async () => { const d = await api('dims:get'); expect(d && d.cards?.length > 0 && Date.now() - (d.ts || 0) < 30 * 60e3, '维度结果缺失或过期：ts=' + d?.ts); expect(Array.isArray(d.srcGap), '缺少 srcGap 字段'); });
+  await t('30 英文模式：行业名/主题词译为英文，数字列右对齐，主进程语言同步', async () => { await page.locator('.toolbar button[title*="English"]').click(); await page.waitForTimeout(800); await nav('Radar').catch(() => {}); await page.waitForTimeout(800);
+    const txt = await page.locator('main, .main').first().innerText(); const num = await page.locator('td.num').count(); const lang = await api('lang:set', 'en'); await page.locator('.toolbar button[title*="English"]').click(); await page.waitForTimeout(300);
+    expect(num > 0, '没有右对齐的数字列'); expect(lang === 'en', '主进程未收到语言'); expect(!/跨行业|软件与服务|半导体与半导体设备/.test(txt), '行业名仍是中文'); });
+  await t('31 简报「为什么值得看」基于数据而非规则模板', async () => { const b = await api('brief:daily', true); const why = b.md.split('\n').filter(l => /^   - /.test(l)); expect(why.length > 0, '无理由行'); expect(!why.some(l => /^   - (资本涌入|需求上升|技术成熟|政策驱动)：/.test(l)), '仍是模板句：' + why[0]); expect(why.every(l => /\d/.test(l)), '理由里没有具体数字'); });
   await t('23 重启后数据保留：观察、阶段、引导、保存的视图、快照', async () => {
     expect(!(await page.locator('.onb').count()), '重启后又出现引导'); const o = await api('opps:list'); expect(watched.every(id => o.find(x => x.id === id)?.watched), '观察列表丢失');
     expect(o.some(x => x.stage === 'screen'), '阶段丢失'); await nav('机会雷达'); expect(await page.locator('.fbar .chip a', { hasText: '高分' }).count() === 1, '保存的视图丢失'); expect((await api('snap:list')).length >= 20, '快照丢失'); });

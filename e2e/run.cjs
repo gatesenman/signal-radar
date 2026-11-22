@@ -38,7 +38,7 @@ const waitFile = async (re, ms = 20000) => { const t0 = Date.now(); while (Date.
   await t('03 聚类：「重新聚类」+ 维度引擎 + 当日快照', async () => {
     await page.locator('.toolbar button', { hasText: '重新聚类' }).click(); await page.waitForSelector('.toast:has-text("已重新语义聚类")', { timeout: 900000 });
     const d = await api('dims:get'); expect(d.cards.length > 10, '维度卡片过少 ' + d.cards.length); const l = await api('snap:list'); expect(l.some(s => s.day === new Date().toLocaleDateString('sv-SE') && !s.backfill), '未生成今日快照'); });
-  const VIEWS = ['总览', '机会维度', '信号流', '不对称信息', '机会雷达', '行业覆盖度', '机会详情', '产业链', '论文与统计', '宏观与贸易', '资本与融资', '验证工作流', '机会对比', '机会看板', '报告与 IC 备忘录', '发现日历', '观察列表', '提醒', '数据源', '共享协作', '运行日志', '设置'];
+  const VIEWS = ['工作台', '收件箱', '工作简报', '总览', '机会维度', '信号流', '不对称信息', '机会雷达', '行业覆盖度', '机会详情', '产业链', '论文与统计', '宏观与贸易', '资本与融资', '验证工作流', '机会对比', '机会看板', '报告与 IC 备忘录', '发现日历', '观察列表', '提醒', '数据源', '共享协作', '运行日志', '设置'];
   await t('04 全部 ' + VIEWS.length + ' 个视图切换无渲染错误', async () => { const bad = []; for (const v of VIEWS) { await nav(v); if (await page.locator('.err').count()) bad.push(v); const h = await page.locator('.ph h1').count(); if (!h) bad.push(v + '(无标题)'); } expect(!bad.length, '出错视图：' + bad.join(',')); });
   await t('05 命令面板 Ctrl+K：搜索并跳转视图、搜索机会', async () => {
     await page.keyboard.press('Control+k'); await page.waitForSelector('.palette input'); await page.keyboard.type('产业链'); await page.keyboard.press('Enter'); await page.waitForTimeout(500); expect((await h1()).includes('产业链'), '未跳转产业链');
@@ -111,6 +111,44 @@ const waitFile = async (re, ms = 20000) => { const t0 = Date.now(); while (Date.
     const txt = await page.locator('main, .main').first().innerText(); const num = await page.locator('td.num').count(); const lang = await api('lang:set', 'en'); await page.locator('.toolbar button[title*="English"]').click(); await page.waitForTimeout(300);
     expect(num > 0, '没有右对齐的数字列'); expect(lang === 'en', '主进程未收到语言'); expect(!/跨行业|软件与服务|半导体与半导体设备/.test(txt), '行业名仍是中文'); });
   await t('31 简报「为什么值得看」基于数据而非规则模板', async () => { const b = await api('brief:daily', true); const why = b.md.split('\n').filter(l => /^   - /.test(l)); expect(why.length > 0, '无理由行'); expect(!why.some(l => /^   - (资本涌入|需求上升|技术成熟|政策驱动)：/.test(l)), '仍是模板句：' + why[0]); expect(why.every(l => /\d/.test(l)), '理由里没有具体数字'); });
+  await t('32 工作台 / 收件箱 / 工作简报可打开且有标题', async () => {
+    for (const v of ['工作台', '收件箱', '工作简报']) { await nav(v); await noErr(); expect((await h1()).includes(v), v + ' 标题为 ' + await h1()); }
+  });
+  await t('33 收件箱分拣：收录后进入初筛并加入观察', async () => {
+    const list = await api('inbox:list');
+    const id = (list.pending[0] || (await api('opps:list')).find(o => (o.stage || 'discover') === 'discover' && !o.quality?.noise))?.id;
+    expect(id, '无机会可分拣');
+    await api('inbox:triage', { id, kind: 'opp', action: 'save', extra: { stage: 'screen' } });
+    const o = (await api('opps:list')).find(x => x.id === id);
+    expect(o?.inboxStatus === 'saved' && o.watched && o.stage === 'screen', '收录未生效：' + JSON.stringify({ s: o?.inboxStatus, w: o?.watched, st: o?.stage }));
+  });
+  await t('34 任务：创建、出现在列表、标记完成', async () => {
+    const o = (await api('opps:list')).find(x => !x.quality?.noise);
+    expect(o, '无机会');
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+    const task = await api('tasks:add', { opp_id: o.id, title: 'e2e 跟进电话', due: today });
+    expect(task && task.id && task.title === 'e2e 跟进电话', '任务未创建');
+    const listed = (await api('tasks:list')).find(t => t.id === task.id);
+    expect(listed && !listed.done, '任务未出现在列表');
+    await api('tasks:update', { id: task.id, done: 1 });
+    const t2 = (await api('tasks:list')).find(x => x.id === task.id);
+    expect(t2 && t2.done, '任务未完成');
+  });
+  await t('35 管道导出 CSV / 可打印 HTML 预览', async () => {
+    const csvPath = await api('pipeline:export', 'csv');
+    expect(csvPath && fs.existsSync(csvPath), 'CSV 未写出');
+    const txt = fs.readFileSync(csvPath, 'utf8');
+    expect(txt.includes('机会') && txt.includes('阶段'), 'CSV 缺表头');
+    const html = await api('pipeline:export', 'preview');
+    expect(/管道清单/.test(html), 'HTML 预览缺失');
+  });
+  await t('36 每日简报含管道段落；每周简报可生成', async () => {
+    const b = await api('brief:daily', true);
+    expect(b && /## 管道进展/.test(b.md) && /## 待办与跟进/.test(b.md) && /## 引用/.test(b.md), '每日简报缺少工作台段落');
+    const w = await api('brief:weekly', true);
+    expect(w && /每周简报/.test(w.md) && /## 本周管道/.test(w.md), '周报内容缺失');
+    expect(fs.existsSync(w.file), '周报未写入');
+  });
   await t('23 重启后数据保留：观察、阶段、引导、保存的视图、快照', async () => {
     expect(!(await page.locator('.onb').count()), '重启后又出现引导'); const o = await api('opps:list'); expect(watched.every(id => o.find(x => x.id === id)?.watched), '观察列表丢失');
     expect(o.some(x => x.stage === 'screen'), '阶段丢失'); await nav('机会雷达'); expect(await page.locator('.fbar .chip a', { hasText: '高分' }).count() === 1, '保存的视图丢失'); expect((await api('snap:list')).length >= 20, '快照丢失'); });

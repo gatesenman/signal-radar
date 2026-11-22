@@ -1,6 +1,6 @@
 // v2.1 标准交互组件：命令面板、首次引导、提醒抽屉、错误边界、中英文、主题、观察列表、标准数据表
 import { React, useEffect, useState, useMemo, api, I, Empty, PH, STAGES } from './ui.jsx';
-const EN = { 总览: 'Overview', 信号流: 'Signals', 机会雷达: 'Radar', 机会维度: 'Dimensions', 机会详情: 'Detail', 不对称信息: 'Asymmetry', 资本与融资: 'Capital', 行业覆盖度: 'Coverage', 产业链: 'Supply chain', 论文与统计: 'Papers & stats', 宏观与贸易: 'Macro & trade', 机会看板: 'Pipeline', 验证工作流: 'Validation', 机会对比: 'Compare', 观察列表: 'Watchlist', 提醒: 'Alerts', 数据源: 'Sources', '报告与 IC 备忘录': 'Reports & IC memo', 共享协作: 'Share', 运行日志: 'Logs', 设置: 'Settings',
+const EN = { 工作台: 'Workbench', 收件箱: 'Inbox', 工作循环: 'Loop', 工作简报: 'Briefs', 工作区: 'Workspace', 待分拣: 'To triage', 已收录: 'Saved', 已忽略: 'Dismissed', 稍后: 'Snooze', 今日待办: 'Due today', 管道中: 'In pipeline', 管道一览: 'Pipeline snapshot', 跟进任务: 'Follow-ups', 可打印预览: 'Print preview', '导出 CSV': 'Export CSV', '导出 HTML': 'Export HTML', 总览: 'Overview', 信号流: 'Signals', 机会雷达: 'Radar', 机会维度: 'Dimensions', 机会详情: 'Detail', 不对称信息: 'Asymmetry', 资本与融资: 'Capital', 行业覆盖度: 'Coverage', 产业链: 'Supply chain', 论文与统计: 'Papers & stats', 宏观与贸易: 'Macro & trade', 机会看板: 'Pipeline', 验证工作流: 'Validation', 机会对比: 'Compare', 观察列表: 'Watchlist', 提醒: 'Alerts', 数据源: 'Sources', '报告与 IC 备忘录': 'Reports & IC memo', 共享协作: 'Share', 运行日志: 'Logs', 设置: 'Settings',
   发现: 'Discover', 筛选: 'Screen', 研究: 'Research', 验证: 'Validate', 决策: 'Decide', 跟踪: 'Track', 工具: 'Tools', 立即采集: 'Collect now', 重新聚类: 'Re-cluster', 报告: 'Report', 就绪: 'Ready', 采集中: 'Collecting', 搜索: 'Search', 初筛: 'Screen', 深研: 'Deep dive', 立项: 'Go', 放弃: 'Drop' };
 let LANG = localStorage.getItem('lang') || 'zh';
 export const t = s => (LANG === 'en' && EN[s]) || s;
@@ -41,7 +41,7 @@ export function Palette({ views, opps, cmds, go, open, close }) {
 }
 
 // 首次引导：角色 / 关注行业 / 地区 → 决定默认首页与筛选
-export const ROLES = [['founder', '创业者 / 独立开发者', 'user-star-line', 'dims', '从「机会维度」开始：按需求缺口、替代需求、平台生态找可以马上动手的切口'], ['vc', 'VC 分析师', 'briefcase-4-line', 'radar', '从「机会雷达」开始：按综合分、多维命中和资本流向筛选，生成 IC 备忘录'], ['corp', '企业战略', 'building-4-line', 'chain', '从「产业链」开始：卡脖子节点、贸易差异和政策变化']];
+export const ROLES = [['founder', '创业者 / 独立开发者', 'user-star-line', 'dims', '从「机会维度」开始找切口；完整循环（分拣、跟进、简报）请用「工作台」'], ['vc', 'VC 分析师', 'briefcase-4-line', 'radar', '从「机会雷达」开始筛选并生成 IC 备忘录；日常跟进请用「工作台」和管道'], ['corp', '企业战略', 'building-4-line', 'chain', '从「产业链」开始看卡脖子与贸易；把线索收进管道后在工作台跟进']];
 export const REGIONS = ['中国', '美国', '欧洲', '日本', '韩国', '印度', '东南亚', '拉美', '中东', '非洲'];
 export function Onboarding({ sectors, done }) {
   const [step, setStep] = useState(0), [role, setRole] = useState('founder'), [secs, setSecs] = useState([]), [regs, setRegs] = useState(['中国', '美国']);

@@ -1,13 +1,13 @@
 import { React, useState, api, I, D, C, KIND, STAGES, fmt, $M, Src, L, Bar, Conf, Life, Ev, Cite, PH, Chart, radarOpt, grid, axl, Empty } from './ui.jsx';
 import { OppHistory } from './views4.jsx';
-export function Detail({ cur, allOpps, upd, load, say, llmOn, setSel, tab, setTab }) {
+export function Detail({ cur, allOpps, upd, load, say, llmOn, setSel, tab, setTab, setView }) {
   const [ld, setLd] = useState(false);
-  if (!cur) return <><PH icon="file-search-line" title="机会详情" /><Empty text="请先在机会雷达中选择一个机会" /></>;
+  if (!cur) return <><PH icon="file-search-line" title="机会详情" /><Empty text="请先在收件箱、管道或机会雷达中选择一个机会。选中后，这里会把信号、行业与供应链、论文与统计、备注和跟进任务放在同一条记录里。" /></>;
   const o = cur;
   const ai = async () => { setLd(true); try { await api.call('opp:llm', o.id); await load(); say('AI 分析完成'); } catch (e) { say('AI 分析失败：' + e.message.replace(/^Error invoking.*?: /, ''), 7000); } setLd(false); };
   const memo = async fmt => { const p = await api.call('memo:save', { id: o.id, fmt }); p && say('已导出：' + p); };
-  const TABS = [['report', '标准报告', 'file-list-3-line'], ['overview', '概览', 'eye-line'], ['score', '评分依据', 'bar-chart-box-line'], ['market', '市场规模', 'pie-chart-line'], ['compete', '竞争格局', 'group-line'], ['econ', '单位经济', 'calculator-line'], ['moat', '护城河与风险', 'shield-line'], ['validate', '画布与验证', 'flask-line'], ['evidence', '证据链 ' + o.evidence.length, 'links-line']];
-  const T = { report: DReport, overview: DOverview, score: DScore, market: DMarket, compete: DCompete, econ: DEcon, moat: DMoat, validate: DValidate, evidence: DEvidence }[tab] || DOverview;
+  const TABS = [['work', '工作区', 'apps-2-line'], ['report', '标准报告', 'file-list-3-line'], ['overview', '概览', 'eye-line'], ['score', '评分依据', 'bar-chart-box-line'], ['market', '市场规模', 'pie-chart-line'], ['compete', '竞争格局', 'group-line'], ['econ', '单位经济', 'calculator-line'], ['moat', '护城河与风险', 'shield-line'], ['validate', '画布与验证', 'flask-line'], ['evidence', '证据链 ' + o.evidence.length, 'links-line']];
+  const T = { work: DWork, report: DReport, overview: DOverview, score: DScore, market: DMarket, compete: DCompete, econ: DEcon, moat: DMoat, validate: DValidate, evidence: DEvidence }[tab] || DWork;
   return <><div className="ph"><div><h1><I n="file-search-line" s={19} />{o.title} <span className="score">{o.total}</span> <Conf v={o.conf} /> {o.stale && <span className="tag o">本轮未再出现</span>}</h1>
     <div className="sub"><span className="tag">{o.sector} / {o.industryName}</span> {o.metrics.signals} 条信号 · {o.sources.length} 个来源 · 代表信号：<L u={o.rep.url}>{o.rep.title.slice(0, 70)}</L> · 分析：{o.analysisBy === 'rules' ? '规则引擎' : o.analysisBy}</div></div><span className="sp" />
     <select style={{ width: 220 }} value={o.id} onChange={e => setSel(e.target.value)}>{allOpps.map(x => <option key={x.id} value={x.id}>{x.total} · {x.title}</option>)}</select>
@@ -15,9 +15,59 @@ export function Detail({ cur, allOpps, upd, load, say, llmOn, setSel, tab, setTa
     <select style={{ width: 86 }} value={o.stage} onChange={async e => { const to = e.target.value; const order = STAGES.map(s => s[0]); if (order.indexOf(to) > order.indexOf(o.stage)) { const g = await api.call('stage:gate', o.id); if (!g.ok && !confirm('阶段门未通过：\n' + g.miss.join('\n') + '\n\n仍要推进？')) return; } upd(o.id, { stage: to }); }}>{STAGES.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>
     <button onClick={ai} disabled={ld || !llmOn} title={llmOn ? '' : '在设置中配置 LLM 后可用'}><I n="sparkling-2-line" />{ld ? '分析中…' : 'AI 深度分析'}</button><button className="s" onClick={() => memo('pdf')}><I n="file-pdf-2-line" />IC 备忘录</button><button className="s" onClick={() => memo('md')}><I n="markdown-line" /></button></div>
     <div className="tabs">{TABS.map(([k, n, ic]) => <a key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}><I n={ic} />{n}</a>)}</div>
-    <T key={o.id + tab} o={o} upd={upd} say={say} /></>;
+    <T key={o.id + tab} o={o} upd={upd} say={say} load={load} setView={setView} /></>;
+}
+
+function DWork({ o, upd, say, load, setView }) {
+  const [note, setNote] = useState(o.notes || ''), [title, setTitle] = useState(''), [due, setDue] = useState('');
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+  const tasks = o.tasks || [];
+  const add = async () => { if (!title.trim()) return say('请填写任务标题'); await api.call('tasks:add', { opp_id: o.id, title: title.trim(), due }); setTitle(''); setDue(''); await load?.(); say('已添加跟进任务'); };
+  const tog = async t => { await api.call('tasks:update', { id: t.id, done: t.done ? 0 : 1 }); await load?.(); };
+  const del = async t => { await api.call('tasks:remove', t.id); await load?.(); say('已删除任务'); };
+  const st = o.statement || {};
+  return <div className="grid g2">
+    <div>
+      <div className="card"><h3><span><I n="lightbulb-flash-line" /> 机会陈述</span><span className="tag">{STAGES.find(s => s[0] === o.stage)?.[1] || o.stage}</span></h3>
+        <table><tbody>{[['谁', st.who], ['痛点', st.pain], ['为什么是现在', st.whyNow], ['怎么做', st.how]].map(([k, v]) => <tr key={k}><td className="mut" style={{ width: 110 }}>{k}</td><td>{v || '—'}</td></tr>)}</tbody></table>
+        <div className="row" style={{ marginTop: 8, gap: 8 }}><span>综合分 <b className="score">{o.total}</b></span><Conf v={o.conf} />{o.metrics?.signals != null && <span className="mut">{o.metrics.signals} 条信号 · {o.sources?.length || 0} 个来源</span>}</div>
+      </div>
+      <div className="card" style={{ marginTop: 12 }}><h3><span><I n="list-check-2" /> 下一步行动</span><span className="mut">{tasks.filter(t => !t.done).length}/{tasks.length} 未完成</span></h3>
+        {!tasks.length && <div className="mut" style={{ marginBottom: 8 }}>还没有跟进任务。写下一件要做的事，并加上到期日。</div>}
+        {tasks.slice().sort((a, b) => (a.done - b.done) || String(a.due).localeCompare(String(b.due))).map(t => <div key={t.id} className="wb-row">
+          <input type="checkbox" checked={!!t.done} onChange={() => tog(t)} />
+          <div className="sp"><b style={t.done ? { textDecoration: 'line-through', opacity: .6 } : {}}>{t.title}</b>
+            <div className={'mut' + (!t.done && t.due && t.due < today ? ' task-due overdue' : !t.done && t.due === today ? ' task-due today' : '')}>{t.due ? (t.due < today && !t.done ? '逾期 ' : t.due === today && !t.done ? '今日 ' : '') + t.due : '无到期日'}</div></div>
+          <button className="s" onClick={() => del(t)}><I n="close-line" /></button>
+        </div>)}
+        <div className="row" style={{ marginTop: 8, gap: 6 }}><input value={title} onChange={e => setTitle(e.target.value)} placeholder="跟进任务，例如：联系航司要舱位" onKeyDown={e => e.key === 'Enter' && add()} />
+          <input type="date" value={due} onChange={e => setDue(e.target.value)} style={{ width: 140 }} />
+          <button onClick={add}><I n="add-line" />添加</button></div>
+      </div>
+      <div className="card" style={{ marginTop: 12 }}><h3><span><I n="sticky-note-line" /> 备注</span></h3>
+        <textarea rows="7" value={note} onChange={e => setNote(e.target.value)} placeholder="研究笔记、客户沟通、报价进展…" />
+        <button style={{ marginTop: 6 }} onClick={() => { upd(o.id, { notes: note }); say('备注已保存'); }}><I n="save-3-line" />保存备注</button>
+      </div>
+    </div>
+    <div>
+      <div className="card"><h3><span><I n="git-branch-line" /> 产业链与卡脖子</span>{setView && <button className="s" onClick={() => setView('chain')}>打开产业链</button>}</h3>
+        {o.chain ? <><div className="mut" style={{ marginBottom: 6 }}>{o.chain.name}</div>
+          {(o.chain.chokes || []).length ? o.chain.chokes.map((c, i) => <div key={i} style={{ fontSize: 12, marginBottom: 4 }}><span className="tag o">卡脖子</span> {c.node}：{c.why}</div>) : <div className="mut">该产业链暂无被标记为卡脖子的节点。</div>}</> :
+          <div className="mut">这条机会还没有匹配到产业链卡片。可到「产业链」页查看全部链路。</div>}
+      </div>
+      <div className="card" style={{ marginTop: 12 }}><h3><span><I n="book-open-line" /> 论文与行业统计</span>{setView && <button className="s" onClick={() => setView('research')}>打开论文与统计</button>}</h3>
+        <div className="mut">行业：{o.industryName || '未分类'}{o.sector ? ' · ' + o.sector : ''}。详细论文增速、转化落差和宏观贸易数据在对应研究页，这里只做入口，避免把工作区做成第二份研究报告。</div>
+        {setView && <div className="row" style={{ marginTop: 8, gap: 6 }}><button className="s" onClick={() => setView('macro')}><I n="global-line" />宏观与贸易</button><button className="s" onClick={() => setView('funding')}><I n="money-dollar-circle-line" />资本与融资</button><button className="s" onClick={() => setView('radar')}>机会雷达</button></div>}
+      </div>
+      <div className="card" style={{ marginTop: 12 }}><h3><span><I n="links-line" /> 最新证据</span></h3>
+        {(o.evidence || []).slice(0, 8).map((e, i) => <div key={i} style={{ fontSize: 12, marginBottom: 4 }}><span className="tag n">{e.source}</span> <L u={e.url}>{String(e.title).slice(0, 90)}</L></div>)}
+        {!(o.evidence || []).length && <div className="mut">还没有挂到这条机会上的证据。</div>}
+      </div>
+    </div>
+  </div>;
 }
 function DOverview({ o }) { const st = o.statement;
+
   return <><div className="grid g12"><div className="card"><h3><span><I n="radar-line" /> VC 六维评分</span><span className="mut">跨源 {o.metrics.crossSource} · 新颖度 {o.metrics.novelty}{o.mosaic && <span className="tag p" style={{ marginLeft: 6 }} title={`机会体检分（0–1000，参照 CB Insights Mosaic 四要素；权重为本应用假设）\n${o.mosaic.talentLinked ? `人才：簇内招聘 ${o.mosaic.talentLinked.inCluster} · 关联招聘 ${o.mosaic.talentLinked.linked}\n` : ''}${o.mosaic.newsAdj < 1 ? `资讯纠偏 ×${o.mosaic.newsAdj}（新闻占比 ${Math.round(o.mosaic.newsShare * 100)}%）\n` : ''}动能 ${o.mosaic.parts.momentum} 百分位 ×40%\n市场 ${o.mosaic.parts.market} ×25%\n资金 ${o.mosaic.parts.money} ×25%\n人才 ${o.mosaic.parts.talent} ×10%`}>体检分 {o.mosaic.score}</span>}</span></h3><Chart h={280} option={radarOpt(o)} /></div>
     <div className="card"><h3><span><I n="lightbulb-flash-line" /> 机会陈述</span>{o.analysisBy === 'rules' ? <span className="tag n">模板生成</span> : <span className="tag p">LLM 生成</span>}</h3>
       <table><tbody>{[['谁', st.who, 'user-3-line', 'who'], ['痛点', st.pain, 'emotion-unhappy-line', 'pain'], ['为什么是现在', st.whyNow, 'time-line', 'whyNow'], ['怎么做', st.how, 'route-line', 'how']].map(([k, v, ic, rk]) => <tr key={k}><td style={{ width: 110, color: 'var(--c1)' }}><I n={ic} /> {k}</td><td>{v} <Cite refs={st.refs?.[rk]} /></td></tr>)}</tbody></table><Ev list={st.evidence} />

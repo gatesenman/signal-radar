@@ -1,13 +1,14 @@
 {
   "name": "signal-radar",
-  "version": "5.0.0",
-  "description": "商机雷达 Signal Radar - AI 创业机会发现桌面应用",
+  "version": "6.0.0",
+  "description": "商机雷达 Signal Radar 6.0 - 端到端商机工作台",
   "main": "electron/main.js",
   "author": "GAOSICHUN",
   "license": "UNLICENSED",
   "scripts": {
     "dev:web": "vite",
     "build:web": "vite build",
+    "test:wb": "node e2e/workbench-unit.cjs",
     "start": "vite build && electron .",
     "pack:linux": "vite build && electron-builder --linux AppImage tar.gz",
     "pack:win": "vite build && electron-builder --win nsis",

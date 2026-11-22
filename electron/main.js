@@ -4,6 +4,7 @@ const initSqlJs = require('sql.js');
 const { SOURCES, UNAVAILABLE } = require('./collectors'); require('./extra');
 const E = require('./engine'), EMB = require('./embed'), M = require('./macro'), CH = require('./chain'), DIMS = require('./dims'), SN = require('./snapshots'), zlib = require('zlib');
 const { INDUSTRIES, SECTORS, GB } = require('./industries');
+const WB = require('./workbench');
 
 let lastDims = null, db, dbFile, win, timer, busy = false, saveT, lastCluster = {};
 const DEFAULTS = { disabledSources: ['ccnews', 'cc_cdx', 'amazon_reviews', 'wayback'], keywords: 'ai agent, humanoid robot, energy storage, glp-1, elder care', skills: '', autoRefresh: true, llmProvider: 'none', openaiBase: 'https://api.openai.com/v1', openaiKey: '', openaiModel: 'gpt-4o-mini', ollamaUrl: 'http://localhost:11434', ollamaModel: 'qwen2.5', githubToken: '', xBearer: '', phToken: '', crunchbaseKey: '', patentsviewKey: '', samKey: '', fredKey: '', censusKey: '', estatKey: '', coreKey: '', s2Key: '', opencorporatesKey: '', companiesHouseKey: '', openalexKey: '', userName: '', clusterSim: 0.6,
@@ -26,6 +27,7 @@ async function initDb() {
   CREATE TABLE IF NOT EXISTS snapshots(day TEXT PRIMARY KEY, ts INTEGER, backfill INTEGER, stats TEXT, data BLOB);
   CREATE TABLE IF NOT EXISTS notifications(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, alert_id INTEGER, ref TEXT, title TEXT, body TEXT, read INTEGER DEFAULT 0, UNIQUE(alert_id, ref));
   CREATE TABLE IF NOT EXISTS logs(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, msg TEXT);`);
+  WB.migrate(run);
   if (!all('SELECT 1 FROM alerts').length) { run("INSERT INTO alerts(type,value) VALUES('score','70')"); run("INSERT INTO alerts(type,value) VALUES('funding','50')"); }
   save(true);
 }
@@ -102,7 +104,7 @@ function merged(o, macro) { const w = ws(o.id); const l = w.llm || {}; const ch 
   const asymmetry = [...(o.asymmetry || []), ...(ch?.chokes || []).slice(0, 2).map(c => ({ key: 'choke', type: '产业链卡脖子', gap: 80, desc: `${ch.name} ${c.node}：${c.why}`, evidence: [{ title: c.node + ' 出口国份额（OEC/USGS）', url: c.url, source: 'chain' }] }))];
   const dims = l.dims || o.dims; const delta = l.dims ? Object.keys(dims).reduce((a, k) => a + dims[k] - o.dims[k], 0) / 6 : 0;
   const ue = { ...o.unitEcon, ...(w.unitEcon || {}) };
-  return { ...o, ...l, dims, unitEcon: ue, statement: l.statement || o.statement, checklist: w.checklist || l.checklist || o.checklist, stage: w.stage || 'discover', notes: w.notes || '', watched: !!w.watched, ruleTotal: o.total, total: Math.round(o.total + delta), comments: w.comments || [], tam: E.tam({ ...o, unitEcon: ue }, macro, w.assump || {}), assump: w.assump || {}, chain: ch, asymmetry }; }
+  return { ...o, ...l, dims, unitEcon: ue, statement: l.statement || o.statement, checklist: w.checklist || l.checklist || o.checklist, stage: w.stage || 'discover', notes: w.notes || '', watched: !!w.watched, inboxStatus: w.inboxStatus || 'open', snoozeUntil: w.snoozeUntil || '', ruleTotal: o.total, total: Math.round(o.total + delta), comments: w.comments || [], tam: E.tam({ ...o, unitEcon: ue }, macro, w.assump || {}), assump: w.assump || {}, chain: ch, asymmetry }; }
 function chainLink(o, chain) { const c = chainFor(o.industry, chain); if (!c) return null; const chokes = c.nodes.filter(n => n.choke);
   return { code: c.code, name: c.name, nodes: c.nodes, chokes: chokes.map(n => ({ node: n.stage + '·' + n.name, why: n.chokeWhy, growth: n.growth, url: n.url })) }; }
 // v4.1 个性化：Rocchio 式隐式反馈画像（观察/阶段推进为正，放弃为负），在行业与主题词上累积权重
@@ -125,6 +127,7 @@ function personalize(list) { const byId = Object.fromEntries(list.map(o => [o.id
 
 function getOpps() { const DM = getK('dims')?.oppDims || {}; const macro = { ...(getK('macro') || {}), stats: getK('istats'), chainData: getK('chain') }; const ids = new Set(); const list = all('SELECT json FROM opps ORDER BY total DESC').map(r => { const o = JSON.parse(r.json); ids.add(o.id); const m = merged(o, macro); const dh = DM[o.id] || []; m.dimHits = dh; if (dh.length > 1) { m.dimBoost = 8 * (dh.length - 1); m.total = Math.min(100, m.total + m.dimBoost); } return m; }).sort((a, b) => b.total - a.total);
   for (const r of all('SELECT * FROM workspace')) { const w = JSON.parse(r.json); if (!ids.has(r.opp_id) && w.snapshot && ((w.stage && w.stage !== 'discover') || w.watched)) list.push({ ...merged(w.snapshot, macro), stale: true }); }
+  const trows = all('SELECT * FROM tasks'), tby = {}; for (const t of trows) (tby[t.opp_id] = tby[t.opp_id] || []).push(t); for (const o of list) o.tasks = tby[o.id] || [];
   personalize(list); return list; }
 // v4.8 主进程文案（系统通知、提醒标题）跟随界面语言；渲染进程切换语言时通过 lang:set 告知
 let LANG = 'zh'; const NT = (zh, en) => LANG === 'en' ? en : zh;
@@ -165,10 +168,28 @@ function dailyBrief(day = dayOf()) { const opps = getOpps().filter(o => !o.quali
   L.push('', '## 你在观察的'); if (!watch.length) L.push('- 无新动态'); watch.forEach(o => L.push(`- ${o.title}：近 3 天 ${o.metrics.last3} 条新信号 ${cite((o.evidence || [])[0])}`));
   if (cards.length) { L.push('', '## 多维度卡片 Top 3'); cards.forEach(c => L.push(`- 【${c.dimName}】${c.title} ${cite((c.evidence || [])[0])}`)); }
   L.push('', '## 采集健康'); L.push(open.length ? open.map(x => '- 熔断：' + x).join('\n') : '- 所有启用的数据源均未熔断');
+  const dayStart = Math.floor(Date.parse(day + 'T00:00:00+08:00') / 1000);
+  const nSig = (all('SELECT COUNT(*) n FROM signals WHERE fetched>? OR ts>?', [dayStart, dayStart])[0] || {}).n || 0;
+  const tlist = all('SELECT * FROM tasks').map(t => ({ ...t, oppTitle: (opps.find(x => x.id === t.opp_id) || {}).title }));
+  L.push(...WB.loopBriefSections({ opps, tasks: tlist, newSignals: nSig, today: day }));
   L.push('', '## 引用'); refs.forEach((r, i) => L.push(`[${i + 1}] ${r.title || r.url} — ${r.url}`));
   const md = L.join('\n'), dir = path.join(app.getPath('userData'), 'briefs'); fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, day + '.md'), md);
   setK('lastBrief', { day, md }); if (Notification.isSupported() && !process.env.SR_SHOT) new Notification({ title: NT('商机雷达 · 每日简报', 'Signal Radar · Daily brief'), body: top[0] ? NT('今日首位：', 'Top today: ') + top[0].title.slice(0, 40) : NT('今日简报已生成', 'Today’s brief is ready') }).show();
   send('brief', { day }); return { day, md, file: path.join(dir, day + '.md') }; }
+function taskTitleMap() { const titles = {}; for (const r of all('SELECT id, json FROM opps')) try { titles[r.id] = JSON.parse(r.json).title; } catch {} for (const r of all('SELECT opp_id, json FROM workspace')) try { const w = JSON.parse(r.json); if (w.snapshot?.title) titles[r.opp_id] = titles[r.opp_id] || w.snapshot.title; } catch {} return titles; }
+function withOppTitles(rows) { const titles = taskTitleMap(); return rows.map(t => ({ ...t, oppTitle: titles[t.opp_id] || '' })); }
+function weeklyBrief(gen) {
+  if (!gen) return getK('lastWeekly') || null;
+  const week = WB.weekKey(), start = WB.weekStartSH(), today = WB.todaySH();
+  const opps = getOpps().filter(o => !o.quality?.noise && !o.stale);
+  const startTs = Math.floor(Date.parse(start + 'T00:00:00+08:00') / 1000);
+  const nSig = (all('SELECT COUNT(*) n FROM signals WHERE fetched>? OR ts>?', [startTs, startTs])[0] || {}).n || 0;
+  const L = [`# 商机雷达 · 每周简报 ${week}`, '', `> 生成于 ${new Date().toLocaleString('zh-CN', { hour12: false })}（本机时区）。覆盖 ${start} 至 ${today}。简报只保存在本机，不会外发。`];
+  L.push(...WB.loopBriefSections({ opps, tasks: withOppTitles(all('SELECT * FROM tasks')), newSignals: nSig, week: true, today }));
+  const md = L.join('\n'), dir = path.join(app.getPath('userData'), 'briefs'); fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, week + '.md'); fs.writeFileSync(file, md);
+  setK('lastWeekly', { week, md, file, day: today }); send('brief', { week }); return { week, md, file, day: today };
+}
 const FAULT = new Set((process.env.SR_FAULT || '').split(',').filter(Boolean));
 let snapTimer; function dailySnap() { if (!all('SELECT 1 FROM snapshots WHERE day=?', [dayOf()]).length && !busy) return recluster().then(() => { save(true); if (getCfg().dailyBrief !== false) dailyBrief(); }).catch(e => log('每日快照失败：' + e.message)); }
 function schedule() { clearInterval(snapTimer); snapTimer = setInterval(dailySnap, 3600e3); clearInterval(timer); if (getCfg().autoRefresh) timer = setInterval(() => setTimeout(() => refresh({ due: true }), Math.random() * 120e3), 15 * 60000); }
@@ -256,7 +277,7 @@ function stageGate(o) {
   if (!(o.evidence || []).length) miss.push('证据链为空');
   if ((o.checklist || []).filter(c => c.status === 'done').length < 2) miss.push('验证清单完成项 <2');
   if ((o.conf || 0) < .4) miss.push('置信度过低（<' + .4 + '）');
-  return { ok: !miss.length, miss, next: o.stage === 'discover' ? 'screen' : o.stage === 'screen' ? 'deep' : o.stage === 'deep' ? 'go' : null };
+  return { ok: !miss.length, miss, next: WB.nextStage(o.stage) };
 }
 function decisionBrief(o) {
   const u = ue(o.unitEcon), risk = o.risks.reduce((a, r) => a + r.p * r.i, 0) / (o.risks.length || 1);
@@ -325,11 +346,41 @@ const H = {
   'brief:daily': (_, gen) => gen ? dailyBrief() : (getK('lastBrief') || null),
   'brief:daily:list': () => { const dir = path.join(app.getPath('userData'), 'briefs'); return fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => f.endsWith('.md')).sort().reverse() : []; },
   'brief:daily:open': () => shell.openPath(path.join(app.getPath('userData'), 'briefs')),
+  'brief:weekly': (_, gen) => weeklyBrief(!!gen),
+  'inbox:list': () => WB.groupInbox(getOpps()),
+  'inbox:signals': (_, q = {}) => WB.signalInbox(all('SELECT id,source,kind,region,title,url,ts,engagement,ind FROM signals ORDER BY ts DESC LIMIT ?', [q.limit || 200]), all("SELECT * FROM triage WHERE kind='signal'")),
+  'inbox:triage': (_, { id, kind, action, extra } = {}) => {
+    if (kind === 'opp') { const p = WB.triagePatch(action, extra || {}); if (!ws(id).snapshot) { const j = all('SELECT json FROM opps WHERE id=?', [id])[0]?.json; if (j) p.snapshot = JSON.parse(j); } return setWs(id, p); }
+    const cur = all('SELECT * FROM triage WHERE id=?', [id])[0] || { id, kind: 'signal', status: 'open', snooze_until: '', note: '' };
+    const p = WB.triagePatch(action, extra || {});
+    const status = p.inboxStatus || cur.status, until = p.snoozeUntil != null ? p.snoozeUntil : (cur.snooze_until || '');
+    run('INSERT OR REPLACE INTO triage VALUES(?,?,?,?,?,?)', [id, 'signal', status, until, cur.note || '', Date.now()]); save();
+    return { id, kind: 'signal', status, snooze_until: until };
+  },
+  'tasks:list': (_, opp_id) => withOppTitles(opp_id ? all('SELECT * FROM tasks WHERE opp_id=? ORDER BY done, due, created DESC', [opp_id]) : all('SELECT * FROM tasks ORDER BY done, due, created DESC')),
+  'tasks:add': (_, { opp_id, title, due, note } = {}) => {
+    const now = Date.now(), t = WB.normalizeTask({ id: WB.newTaskId(now), opp_id, title, due: due || '', done: 0, note: note || '', created: now, updated: now });
+    if (!t.opp_id) throw new Error('缺少机会 id'); if (!t.title) throw new Error('任务标题不能为空');
+    run('INSERT INTO tasks VALUES(?,?,?,?,?,?,?,?)', [t.id, t.opp_id, t.title, t.due, t.done, t.note, t.created, t.updated]); save(); return { ...t, oppTitle: (taskTitleMap()[t.opp_id] || '') };
+  },
+  'tasks:update': (_, patch = {}) => {
+    const cur = all('SELECT * FROM tasks WHERE id=?', [patch.id])[0]; if (!cur) throw new Error('任务不存在');
+    const t = WB.normalizeTask({ ...cur, ...patch, id: cur.id, opp_id: cur.opp_id, updated: Date.now() });
+    run('INSERT OR REPLACE INTO tasks VALUES(?,?,?,?,?,?,?,?)', [t.id, t.opp_id, t.title, t.due, t.done, t.note, t.created, t.updated]); save(); return { ...t, oppTitle: (taskTitleMap()[t.opp_id] || '') };
+  },
+  'tasks:remove': (_, id) => { run('DELETE FROM tasks WHERE id=?', [id]); save(); return true; },
+  'pipeline:export': async (_, fmt = 'csv') => {
+    const opps = getOpps(), tasks = all('SELECT * FROM tasks'), day = WB.todaySH();
+    if (fmt === 'preview') return WB.pipelineHtml(opps, tasks, { day });
+    const ext = fmt === 'html' ? 'html' : 'csv';
+    const r = await dialog.showSaveDialog(win, { defaultPath: `商机雷达-管道-${day}.${ext}` }); if (r.canceled) return null;
+    fs.writeFileSync(r.filePath, fmt === 'html' ? WB.pipelineHtml(opps, tasks, { day }) : WB.pipelineCsv(opps, tasks)); return r.filePath;
+  },
   'lang:set': (_, l) => { LANG = l === 'en' ? 'en' : 'zh'; setK('lang', LANG); return LANG; },
   'stage:gate': (_, id) => stageGate(getOpps().find(x => x.id === id) || {}),
   'memo:save': (_, { id, fmt }) => { const o = getOpps().find(x => x.id === id); return saveDoc(icMemo(o), 'IC-Memo-' + o.title.replace(/[^\w\u4e00-\u9fa5]+/g, '_').slice(0, 30), fmt); },
   'share:export': async () => { const r = await dialog.showSaveDialog(win, { defaultPath: `商机雷达-共享-${new Date().toISOString().slice(0, 10)}.json` }); if (r.canceled) return null;
-    const cfg = getCfg(); const data = { app: 'signal-radar', version: 2, from: cfg.userName || 'anonymous', exportedAt: new Date().toISOString(), workspace: all('SELECT * FROM workspace').map(w => ({ id: w.opp_id, ...JSON.parse(w.json) })), opps: all('SELECT json FROM opps').map(r => JSON.parse(r.json)), alerts: all('SELECT type,value FROM alerts') };
+    const cfg = getCfg(); const data = { app: 'signal-radar', version: 3, from: cfg.userName || 'anonymous', exportedAt: new Date().toISOString(), workspace: all('SELECT * FROM workspace').map(w => ({ id: w.opp_id, ...JSON.parse(w.json) })), opps: all('SELECT json FROM opps').map(r => JSON.parse(r.json)), alerts: all('SELECT type,value FROM alerts'), tasks: all('SELECT * FROM tasks'), triage: all('SELECT * FROM triage') };
     for (const w of data.workspace) if (!w.snapshot) w.snapshot = data.opps.find(o => o.id === w.id);
     fs.writeFileSync(r.filePath, JSON.stringify(data)); return r.filePath; },
   'share:import': async () => { const r = await dialog.showOpenDialog(win, { filters: [{ name: 'JSON', extensions: ['json'] }] }); if (r.canceled) return null;
@@ -337,6 +388,8 @@ const H = {
     for (const w of d.workspace || []) { const { id, ...rest } = w; const cur = ws(id); const comments = [...(cur.comments || []), ...(rest.comments || []).filter(c => !(cur.comments || []).some(x => x.ts === c.ts && x.by === c.by))];
       const notes = cur.notes && rest.notes && cur.notes !== rest.notes ? cur.notes + `\n\n— 来自 ${d.from} —\n` + rest.notes : (cur.notes || rest.notes || '');
       run('INSERT OR REPLACE INTO workspace VALUES(?,?)', [id, JSON.stringify({ ...rest, ...cur, snapshot: cur.snapshot || rest.snapshot, comments, notes, stage: cur.stage || rest.stage, watched: true, importedFrom: d.from })]); n++; }
+    for (const t of d.tasks || []) { if (!t.id || !t.opp_id || !t.title) continue; const cur = all('SELECT * FROM tasks WHERE id=?', [t.id])[0]; if (cur && cur.updated && t.updated && cur.updated > t.updated) continue; const nrm = WB.normalizeTask({ ...t, created: t.created || Date.now(), updated: t.updated || Date.now() }); run('INSERT OR REPLACE INTO tasks VALUES(?,?,?,?,?,?,?,?)', [nrm.id, nrm.opp_id, nrm.title, nrm.due, nrm.done, nrm.note, nrm.created, nrm.updated]); }
+    for (const x of d.triage || []) { if (!x.id) continue; run('INSERT OR REPLACE INTO triage VALUES(?,?,?,?,?,?)', [x.id, x.kind || 'signal', x.status || 'open', x.snooze_until || '', x.note || '', x.updated || Date.now()]); }
     save(); return { file: r.filePaths[0], from: d.from, count: n }; },
   'open:url': (_, u) => shell.openExternal(u), 'db:path': () => dbFile, 'open:data': () => shell.openPath(app.getPath('userData'))
 };

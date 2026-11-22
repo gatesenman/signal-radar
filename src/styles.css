@@ -81,3 +81,17 @@ tr.flash,tr.flash td{animation:evflash 1.2s ease}@keyframes evflash{0%{backgroun
 
 /* v4.8 数字列右对齐 */
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}th.num{padding-right:10px}
+
+
+/* v6.0 工作台 */
+.wb-row{display:flex;align-items:flex-start;gap:8px;padding:7px 4px;border-bottom:1px solid var(--line);cursor:pointer}
+.wb-row:last-child{border-bottom:0}
+.wb-row:hover{background:var(--hover)}
+.wb-brief{white-space:pre-wrap;font-size:12px;max-height:240px;overflow:auto;margin:0}
+.inbox-act{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.task-due.overdue{color:#ef4444}
+.task-due.today{color:var(--warn)}
+.wb-preview{background:var(--panel);color:var(--tx)}
+.wb-preview iframe{width:100%;height:60vh;border:1px solid var(--line);background:#fff;margin-top:8px;border-radius:6px}
+.seg button{background:var(--panel2);border:1px solid var(--line);color:var(--tx2)}
+.seg button.on{background:var(--sel);color:var(--tx-strong);border-color:var(--ac)}
