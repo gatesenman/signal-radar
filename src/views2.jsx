@@ -2,7 +2,9 @@ import { React, useEffect, useState, api, I, CATC, STAGES, fmt, Src, L, Bar, PH,
 import * as WBmod from '../electron/workbench.js';
 const WB = WBmod.default || WBmod;
 export function Board({ opps, open, upd, oppCtx, say, refresh, busy, stats }) {
-  const [over, setOver] = useState(null), [mode, setMode] = useState('board'), [preview, setPreview] = useState(null), [onlyFlag, setOnlyFlag] = useState('');
+  const [over, setOver] = useState(null), [mode, setMode] = useState('board'), [preview, setPreview] = useState(null), [onlyFlag, setOnlyFlag] = useState(''), [prefsIn, setPrefsIn] = useState(false);
+  useEffect(() => { api.call('wb:prefs').then(p => { setMode(p.boardMode === 'list' ? 'list' : 'board'); setOnlyFlag(p.boardFlag || ''); setPrefsIn(true); }).catch(() => setPrefsIn(true)); }, []);
+  useEffect(() => { if (prefsIn) api.call('wb:prefs:set', { boardMode: mode, boardFlag: onlyFlag }).catch(() => {}); }, [mode, onlyFlag, prefsIn]);
   const drop = async (e, k) => { e.preventDefault(); setOver(null); const id = e.dataTransfer.getData('text/opp'); if (id) { await upd(id, { stage: k }); say?.('已移到「' + STAGES.find(s => s[0] === k)[1] + '」'); } };
   const exp = async fmt => { const p = await api.call('pipeline:export', fmt); if (fmt === 'preview') setPreview(p); else p && say?.('已导出：' + p); };
   const live0 = opps.filter(o => !o.quality?.noise);

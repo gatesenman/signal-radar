@@ -141,12 +141,14 @@ function pipelineHtml(opps, tasks = [], meta = {}) {
 <p style="color:#666;font-size:12px">本清单由本机数据生成，不会外发。</p></body></html>`;
 }
 
-function loopBriefSections({ opps = [], tasks = [], newSignals = 0, week = false, today } = {}) {
+function loopBriefSections({ opps = [], tasks = [], newSignals = 0, week = false, today, prefs } = {}) {
   today = today || todaySH();
   const g = groupInbox(opps, today);
   const byStage = {};
   for (const o of opps.filter(o => !o.quality?.noise && !o.stale)) byStage[o.stage || 'discover'] = (byStage[o.stage || 'discover'] || 0) + 1;
   const lines = [];
+  const scope = focusLabel(prefs);
+  if (scope) { lines.push('', week ? '## 本周关注范围' : '## 关注范围'); lines.push('- 本简报按工作台关注筛选：' + scope + '（不是全库）'); }
   lines.push('', week ? '## 本周管道' : '## 管道进展');
   lines.push(Object.keys(STAGE_CN).map(k => `${STAGE_CN[k]} ${byStage[k] || 0}`).join(' · '));
   const active = opps.filter(o => ACTIVE_STAGES.includes(o.stage || ''));
@@ -529,9 +531,44 @@ function mergeShareSide(localRows, incomingRows, { required, normalize } = {}) {
   return { rows: Object.values(out), report };
 }
 
+
+function defaultWbPrefs() {
+  return { inboxTab: 'pending', boardMode: 'board', boardFlag: '', watchIndustries: [], focusWatched: false, minScore: 0, inboxDays: 1 };
+}
+function normalizeWbPrefs(p = {}) {
+  const d = defaultWbPrefs();
+  const watchIndustries = Array.isArray(p.watchIndustries) ? [...new Set(p.watchIndustries.filter(Boolean).map(String))] : [];
+  const inboxTab = ['pending', 'signals', 'snoozed', 'saved', 'dismissed'].includes(p.inboxTab) ? p.inboxTab : d.inboxTab;
+  const boardMode = p.boardMode === 'list' ? 'list' : 'board';
+  const boardFlag = ['overdue', 'stuck', 'needs'].includes(p.boardFlag) ? p.boardFlag : '';
+  const minScore = Math.max(0, Math.min(100, Number(p.minScore) || 0));
+  const inboxDays = [1, 3, 7, 14].includes(+p.inboxDays) ? +p.inboxDays : 1;
+  return { inboxTab, boardMode, boardFlag, watchIndustries, focusWatched: !!p.focusWatched, minScore, inboxDays };
+}
+function focusLabel(prefs) {
+  const p = normalizeWbPrefs(prefs);
+  const bits = [];
+  if (p.focusWatched) bits.push('仅观察中的机会');
+  if (p.watchIndustries.length) bits.push('行业 ' + p.watchIndustries.join('、'));
+  if (p.minScore) bits.push('综合分 ≥ ' + p.minScore);
+  return bits.join(' · ');
+}
+function applyWbFocus(opps, prefs) {
+  const p = normalizeWbPrefs(prefs);
+  return (opps || []).filter(o => {
+    if (p.focusWatched && !o.watched) return false;
+    if (p.minScore && (o.personal?.score ?? o.total ?? 0) < p.minScore) return false;
+    if (p.watchIndustries.length) {
+      const hit = p.watchIndustries.some(k => (o.industry || '').startsWith(k) || o.industryName === k || o.sector === k);
+      if (!hit) return false;
+    }
+    return true;
+  });
+}
+
 module.exports = {
   STAGE_CN, STAGE_NEXT, ACTIVE_STAGES, todaySH, addDaysSH, weekStartSH, weekKey, nextStage, migrate,
   inboxStatusOf, isPending, groupInbox, triagePatch, newTaskId, normalizeTask, taskState, dueTasks,
   csvEscape, escHtml, pipelineRows, pipelineCsv, pipelineHtml, loopBriefSections, signalInbox,
-  ROLE_HOME, resolveHomeView, lastRefreshSummary, emptyStateCopy, taskAlertHits, notifOpenTarget, workspaceDigest, snapshotOppTriage, snapshotSigTriage, undoTriagePatch, makeUndoEntry, batchTriagePlan, inboxKeyAction, STALL_DAYS, daysBetween, stageChangedDay, pipelineHealth, briefOppLink, splitBriefLinks, WB_VIEWS, parseWorkbenchCommand, STAGE_ALIAS, normalizeStage, opportunityOnePager, onePagerHtml, pickNewerRecord, mergeShareSide
+  ROLE_HOME, resolveHomeView, lastRefreshSummary, emptyStateCopy, taskAlertHits, notifOpenTarget, workspaceDigest, snapshotOppTriage, snapshotSigTriage, undoTriagePatch, makeUndoEntry, batchTriagePlan, inboxKeyAction, STALL_DAYS, daysBetween, stageChangedDay, pipelineHealth, briefOppLink, splitBriefLinks, WB_VIEWS, parseWorkbenchCommand, STAGE_ALIAS, normalizeStage, opportunityOnePager, onePagerHtml, pickNewerRecord, mergeShareSide, defaultWbPrefs, normalizeWbPrefs, applyWbFocus, focusLabel
 };

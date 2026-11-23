@@ -362,6 +362,25 @@ t('共享包合并：本机较新或对方无时间戳时保留本机，不静�
   assert.strictEqual(tie.take, 'local');
 });
 
+
+t('工作台关注：过滤观察/行业/分数，并生成简报关注范围说明', () => {
+  const opps = [
+    { id: 'a', title: 'A', industry: '2030', industryName: '公路运输', total: 80, watched: true, stage: 'screen' },
+    { id: 'b', title: 'B', industry: '4510', industryName: '软件', total: 60, watched: false, stage: 'discover' },
+    { id: 'c', title: 'C', industry: '2030', industryName: '公路运输', total: 50, watched: true, stage: 'research' }
+  ];
+  const p = WB.normalizeWbPrefs({ focusWatched: true, watchIndustries: ['2030'], minScore: 70, inboxTab: 'nope', inboxDays: 9, boardMode: 'list' });
+  assert.strictEqual(p.inboxTab, 'pending');
+  assert.strictEqual(p.inboxDays, 1);
+  assert.strictEqual(p.boardMode, 'list');
+  const f = WB.applyWbFocus(opps, p);
+  assert.deepStrictEqual(f.map(o => o.id), ['a']);
+  const label = WB.focusLabel(p);
+  assert.ok(label.includes('仅观察中的机会') && label.includes('2030') && label.includes('≥ 70'));
+  const md = WB.loopBriefSections({ opps: f, tasks: [], prefs: p, today: '2026-11-23' }).join('\n');
+  assert.ok(md.includes('## 关注范围') && md.includes('不是全库'));
+});
+
 const pass = results.filter(r => r.ok).length;
 console.log(`\n${pass}/${results.length} passed`);
 process.exit(pass === results.length ? 0 : 1);

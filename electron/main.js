@@ -173,7 +173,8 @@ function dailyBrief(day = dayOf()) { const opps = getOpps().filter(o => !o.quali
   const dayStart = Math.floor(Date.parse(day + 'T00:00:00+08:00') / 1000);
   const nSig = (all('SELECT COUNT(*) n FROM signals WHERE fetched>? OR ts>?', [dayStart, dayStart])[0] || {}).n || 0;
   const tlist = all('SELECT * FROM tasks').map(t => ({ ...t, oppTitle: (opps.find(x => x.id === t.opp_id) || {}).title }));
-  L.push(...WB.loopBriefSections({ opps, tasks: tlist, newSignals: nSig, today: day }));
+  const prefs = WB.normalizeWbPrefs(getK('wbPrefs', {})); const briefOpps = (prefs.focusWatched || prefs.watchIndustries.length || prefs.minScore) ? WB.applyWbFocus(opps, prefs) : opps;
+  L.push(...WB.loopBriefSections({ opps: briefOpps, tasks: tlist, newSignals: nSig, today: day, prefs }));
   L.push('', '## 引用'); refs.forEach((r, i) => L.push(`[${i + 1}] ${r.title || r.url} — ${r.url}`));
   const md = L.join('\n'), dir = path.join(app.getPath('userData'), 'briefs'); fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, day + '.md'), md);
   setK('lastBrief', { day, md }); if (Notification.isSupported() && !process.env.SR_SHOT) new Notification({ title: NT('商机雷达 · 每日简报', 'Signal Radar · Daily brief'), body: top[0] ? NT('今日首位：', 'Top today: ') + top[0].title.slice(0, 40) : NT('今日简报已生成', 'Today’s brief is ready') }).show();
@@ -187,7 +188,8 @@ function weeklyBrief(gen) {
   const startTs = Math.floor(Date.parse(start + 'T00:00:00+08:00') / 1000);
   const nSig = (all('SELECT COUNT(*) n FROM signals WHERE fetched>? OR ts>?', [startTs, startTs])[0] || {}).n || 0;
   const L = [`# 商机雷达 · 每周简报 ${week}`, '', `> 生成于 ${new Date().toLocaleString('zh-CN', { hour12: false })}（本机时区）。覆盖 ${start} 至 ${today}。简报只保存在本机，不会外发。`];
-  L.push(...WB.loopBriefSections({ opps, tasks: withOppTitles(all('SELECT * FROM tasks')), newSignals: nSig, week: true, today }));
+  const prefs = WB.normalizeWbPrefs(getK('wbPrefs', {})); const briefOpps = (prefs.focusWatched || prefs.watchIndustries.length || prefs.minScore) ? WB.applyWbFocus(opps, prefs) : opps;
+  L.push(...WB.loopBriefSections({ opps: briefOpps, tasks: withOppTitles(all('SELECT * FROM tasks')), newSignals: nSig, week: true, today, prefs }));
   const md = L.join('\n'), dir = path.join(app.getPath('userData'), 'briefs'); fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, week + '.md'); fs.writeFileSync(file, md);
   setK('lastWeekly', { week, md, file, day: today }); send('brief', { week }); return { week, md, file, day: today };
@@ -414,6 +416,8 @@ const H = {
     fs.writeFileSync(r.filePath, fmt === 'html' ? WB.pipelineHtml(opps, tasks, { day }) : WB.pipelineCsv(opps, tasks)); return r.filePath;
   },
   'lang:set': (_, l) => { LANG = l === 'en' ? 'en' : 'zh'; setK('lang', LANG); return LANG; },
+  'wb:prefs': () => WB.normalizeWbPrefs(getK('wbPrefs', {})),
+  'wb:prefs:set': (_, patch) => { const next = WB.normalizeWbPrefs({ ...getK('wbPrefs', {}), ...(patch || {}) }); setK('wbPrefs', next); save(); return next; },
   'opp:digest': (_, id) => { const o = getOpps().find(x => x.id === id); return WB.workspaceDigest(o || {}, { papers: paperStats(), macro: getK('macro'), istats: getK('istats') }); },
   'opp:onepager': async (_, { id, fmt } = {}) => {
     const o = getOpps().find(x => x.id === id); if (!o) throw new Error('未找到该机会');

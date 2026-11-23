@@ -115,3 +115,6 @@ tr.row-needs{background:var(--panel2)}
 .brief-md{font-size:12px;line-height:1.55;max-height:560px;overflow:auto;white-space:pre-wrap}
 .brief-h{font-weight:650;margin:10px 0 4px;white-space:pre-wrap}
 .brief-p{white-space:pre-wrap}
+
+.wb-inds{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.wb-inds .s.on,.s.on{outline:1px solid var(--ac)}

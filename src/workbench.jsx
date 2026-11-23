@@ -20,11 +20,15 @@ function pendingOf(opps, today) {
 export function Workbench({ opps, stats, open, refresh, busy, say, setView, oppCtx }) {
   const [tasks, setTasks] = useState([]);
   const [brief, setBrief] = useState(null);
-  useEffect(() => { api.call('tasks:list').then(setTasks).catch(() => setTasks([])); api.call('brief:daily').then(setBrief).catch(() => {}); }, [opps]);
+  const [prefs, setPrefs] = useState(null);
+  useEffect(() => { api.call('tasks:list').then(setTasks).catch(() => setTasks([])); api.call('brief:daily').then(setBrief).catch(() => {}); api.call('wb:prefs').then(setPrefs).catch(() => setPrefs(WB.defaultWbPrefs())); }, [opps]);
   const today = todaySH();
-  const pending = useMemo(() => pendingOf(opps, today), [opps, today]);
+  const savePrefs = async patch => { const n = await api.call('wb:prefs:set', patch); setPrefs(n); };
+  const scopeOn = !!(prefs && (prefs.focusWatched || (prefs.watchIndustries || []).length || prefs.minScore));
+  const pool = useMemo(() => scopeOn ? WB.applyWbFocus(opps, prefs) : opps, [opps, prefs, scopeOn]);
+  const pending = useMemo(() => pendingOf(pool, today), [pool, today]);
   const due = tasks.filter(t => !t.done && t.due && t.due <= today).sort((a, b) => (a.due < b.due ? -1 : 1));
-  const byStage = Object.fromEntries(STAGES.map(([k]) => [k, opps.filter(o => (o.stage || 'discover') === k && !o.quality?.noise).length]));
+  const byStage = Object.fromEntries(STAGES.map(([k]) => [k, pool.filter(o => (o.stage || 'discover') === k && !o.quality?.noise).length]));
   const pipeN = STAGES.filter(([k]) => k !== 'discover' && k !== 'drop').reduce((a, [k]) => a + (byStage[k] || 0), 0);
   const empty = emptyOf('workbench', stats, busy);
   if (!stats?.total) return <><PH icon="apps-2-line" title="工作台" sub="发现 → 分拣 → 调研 → 跟进 → 简报，在一个循环里做完" /><Empty refresh={refresh} busy={busy} text={empty.text} kind={empty.kind} errors={empty.errors} /></>;
@@ -32,7 +36,11 @@ export function Workbench({ opps, stats, open, refresh, busy, say, setView, oppC
   return <><PH icon="apps-2-line" title="工作台" sub={`信号 ${stats.total.toLocaleString()} · 机会 ${opps.length} · 待分拣 ${pending.length} · 到期任务 ${due.length}`}>
     <button onClick={() => refresh()} disabled={busy}><I n={busy ? 'loader-4-line' : 'refresh-line'} />{busy ? '采集中…' : '立即采集'}</button>
     <button className="s" onClick={() => setView('inbox')}><I n="clipboard-line" />去收件箱{pending.length ? ' ' + pending.length : ''}</button>
+    <label className="mut" style={{ fontSize: 12 }}><input type="checkbox" checked={!!prefs?.focusWatched} onChange={e => savePrefs({ focusWatched: e.target.checked })} /> 只看观察中的</label>
+    <label className="mut" style={{ fontSize: 12 }}>最低分 <input type="number" min="0" max="100" value={prefs?.minScore || 0} onChange={e => savePrefs({ minScore: +e.target.value || 0 })} style={{ width: 56 }} /></label>
   </PH>
+    {!!scopeOn && <div className="mut" style={{ margin: '0 0 8px', fontSize: 12 }}>工作台已按关注筛选{WB.focusLabel(prefs) ? '：' + WB.focusLabel(prefs) : ''}（{pool.length}/{opps.length}）。简报生成时也会使用同一范围。</div>}
+    <div className="wb-inds">{[...new Set(opps.map(o => o.industry).filter(Boolean))].slice(0, 16).map(code => { const name = opps.find(o => o.industry === code)?.industryName || code; const on = (prefs?.watchIndustries || []).includes(code); return <button key={code} className={'s' + (on ? ' on' : '')} onClick={() => { const cur = prefs?.watchIndustries || []; savePrefs({ watchIndustries: on ? cur.filter(x => x !== code) : [...cur, code] }); }}>{name}</button>; })}</div>
     <div className="grid g4">
       <div className="kpi" style={{ cursor: 'pointer' }} onClick={() => setView('signals')}><span className="l">今日新信号</span><b>{stats.day}</b><span className="mut">库内 {stats.total.toLocaleString()}</span></div>
       <div className="kpi" style={{ cursor: 'pointer' }} onClick={() => setView('inbox')}><span className="l">待分拣</span><b>{pending.length}</b><span className="mut">收件箱中的新发现</span></div>
@@ -61,7 +69,7 @@ export function Workbench({ opps, stats, open, refresh, busy, say, setView, oppC
 
 
 export function Inbox({ opps, open, load, say, refresh, busy, stats, oppCtx }) {
-  const [tab, setTab] = useState('pending'), [days, setDays] = useState(1), [sigs, setSigs] = useState({ pending: [], snoozed: [], dismissed: [], saved: [] });
+  const [tab, setTab] = useState('pending'), [days, setDays] = useState(1), [sigs, setSigs] = useState({ pending: [], snoozed: [], dismissed: [], saved: [] }), [prefsIn, setPrefsIn] = useState(false);
   const [cur, setCur] = useState(0), [picked, setPicked] = useState(() => new Set()), [canUndo, setCanUndo] = useState(false);
   const today = todaySH();
   const g = useMemo(() => {
@@ -73,6 +81,8 @@ export function Inbox({ opps, open, load, say, refresh, busy, stats, oppCtx }) {
   }, [opps, today]);
   const loadSig = () => api.call('inbox:signals').then(setSigs).catch(() => setSigs({ pending: [], snoozed: [], dismissed: [], saved: [] }));
   useEffect(() => { loadSig(); }, [opps]);
+  useEffect(() => { api.call('wb:prefs').then(p => { setTab(p.inboxTab || 'pending'); setDays(p.inboxDays || 1); setPrefsIn(true); }).catch(() => setPrefsIn(true)); }, []);
+  useEffect(() => { if (prefsIn) api.call('wb:prefs:set', { inboxTab: tab, inboxDays: days }).catch(() => {}); }, [tab, days, prefsIn]);
   const list = tab === 'signals' ? (sigs.pending || []) : tab === 'snoozed' ? g.snoozed : tab === 'saved' ? g.saved : tab === 'dismissed' ? g.dismissed : g.pending;
   useEffect(() => { setCur(0); setPicked(new Set()); }, [tab]);
   const bag = useRef({}); bag.current = { tab, days, cur, list, sigs, g };
