@@ -67,3 +67,22 @@
 为 6.0/6.1 工作台新增文案补全英文词典（整句 EXACT + 常用短语 PHRASES），切换到 English 时工作台、收件箱、简报、一页纸、关注筛选和设置项可翻译。收件箱快捷键写入 F1 快捷键表；命令面板、关注筛选和勾选项补了 `aria-label`，页签使用 `role="tablist"`。视觉语言仍是字体/SVG 图标，不以 emoji 当主图标。
 
 主要文件：`src/i18n-en.js`、`src/App.jsx`、`src/shell21.jsx`、`src/workbench.jsx`。
+
+## r12 固化 6.1.0：测试、版本与源码包
+
+版本升为 **6.1.0**。工作台单测已扩充（首页、提醒、研判摘要、收件箱键盘、管道纪律、简报链接、命令面板、共享合并、关注筛选、英文字典）。Playwright Electron E2E harness 增补用例 37–40（偏好、一页纸、关注读写、简报段落）；本轮构建机磁盘约 2.3GB 可用且没有安装 `node_modules`（避免 onnxruntime CUDA 占满磁盘），因此未跑完整 Electron E2E，也未打 Windows 安装包（需要 wine 与显著磁盘空间）。`release/` 里 4.9 / 5.0 官方安装包未删除。
+
+源码 zip 排除 `node_modules`、`models`、`release`、`shots`、sqlite 与 `.git`。
+
+### 如何运行
+
+```bash
+cd app
+npm install          # 不要额外拉取 CUDA 版 onnxruntime
+npm run test:wb      # 工作台纯逻辑单测
+npx vite build
+npx electron .       # 需先 build:web
+# Windows 安装包（在有 wine / 足够磁盘的环境）：npm run pack:win
+```
+
+数据仍在 `%APPDATA%\signal-radar`（或对应 userData）。首次 signals=0 仍会自动采集（v5.0 行为）。

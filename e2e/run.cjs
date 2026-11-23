@@ -149,6 +149,29 @@ const waitFile = async (re, ms = 20000) => { const t0 = Date.now(); while (Date.
     expect(w && /每周简报/.test(w.md) && /## 本周管道/.test(w.md), '周报内容缺失');
     expect(fs.existsSync(w.file), '周报未写入');
   });
+  await t('37 工作台偏好接口可用，默认首页逻辑不依赖角色', async () => {
+    const prefs = await api('wb:prefs');
+    expect(prefs && typeof prefs.inboxTab === 'string' && 'focusWatched' in prefs, 'wb:prefs 缺失');
+    const cfg = await api('cfg:get');
+    expect(cfg, 'cfg 不可读');
+  });
+  await t('38 机会一页纸可预览且转义 HTML', async () => {
+    const o = (await api('opps:list')).find(x => !x.quality?.noise);
+    expect(o, '无机会');
+    const r = await api('opp:onepager', { id: o.id, fmt: 'preview-html' });
+    expect(r && r.md && r.html && /本机一页纸/.test(r.md), '一页纸未生成');
+    expect(r.html.includes('打印') && !r.html.includes('<script>x'), '一页纸 HTML 异常');
+  });
+  await t('39 工作台关注偏好可读写并恢复', async () => {
+    const cur = await api('wb:prefs');
+    const n = await api('wb:prefs:set', { minScore: 55, focusWatched: true });
+    expect(n.minScore === 55 && n.focusWatched === true, 'prefs 未保存');
+    await api('wb:prefs:set', { minScore: cur.minScore || 0, focusWatched: !!cur.focusWatched });
+  });
+  await t('40 每日简报含需要处理与观察段落', async () => {
+    const b = await api('brief:daily', true);
+    expect(b && /## 需要处理/.test(b.md) && /## 观察中的行业/.test(b.md), '每日简报缺少 6.1 段落');
+  });
   await t('23 重启后数据保留：观察、阶段、引导、保存的视图、快照', async () => {
     expect(!(await page.locator('.onb').count()), '重启后又出现引导'); const o = await api('opps:list'); expect(watched.every(id => o.find(x => x.id === id)?.watched), '观察列表丢失');
     expect(o.some(x => x.stage === 'screen'), '阶段丢失'); await nav('机会雷达'); expect(await page.locator('.fbar .chip a', { hasText: '高分' }).count() === 1, '保存的视图丢失'); expect((await api('snap:list')).length >= 20, '快照丢失'); });

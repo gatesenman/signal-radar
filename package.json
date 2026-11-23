@@ -1,7 +1,7 @@
 {
   "name": "signal-radar",
-  "version": "6.0.0",
-  "description": "商机雷达 Signal Radar 6.0 - 端到端商机工作台",
+  "version": "6.1.0",
+  "description": "商机雷达 Signal Radar 6.1 - 端到端商机工作台",
   "main": "electron/main.js",
   "author": "GAOSICHUN",
   "license": "UNLICENSED",
