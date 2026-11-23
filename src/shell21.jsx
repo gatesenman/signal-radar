@@ -29,15 +29,17 @@ export class ErrorBoundary extends React.Component {
 }
 
 // Ctrl+K 命令面板：视图跳转 + 机会搜索 + 命令
-export function Palette({ views, opps, cmds, go, open, close }) {
+export function Palette({ views, opps, cmds, go, open, close, sel, onCommand, pending }) {
   const [q, setQ] = useState(''), [i, setI] = useState(0);
   const items = useMemo(() => { const s = q.toLowerCase(), m = x => !s || x.toLowerCase().includes(s);
-    return [...views.filter(v => m(v[1] + ' ' + t(v[1]) + ' ' + v[0])).map(v => ({ ic: v[2], t: t(v[1]), k: '视图', f: () => go(v[0]) })),
+    const selOpp = (opps || []).find(o => o.id === sel);
+    const parsed = (q.trim() ? WB.parseWorkbenchCommand(q, { opps, selOpp, pending: pending || [] }) : []).map(it => ({ ic: it.action === 'task:add' ? 'list-check-2' : it.action === 'inbox:triage' ? 'clipboard-line' : 'apps-2-line', t: it.label, k: it.group, f: () => onCommand ? onCommand(it) : (it.action === 'go' && go(it.payload)), noop: it.action === 'noop' }));
+    return [...parsed, ...views.filter(v => m(v[1] + ' ' + t(v[1]) + ' ' + v[0])).map(v => ({ ic: v[2], t: t(v[1]), k: '视图', f: () => go(v[0]) })),
       ...cmds.filter(c => m(c[1])).map(c => ({ ic: c[0], t: c[1], k: '命令', f: c[2] })),
-      ...opps.filter(o => s && m(o.title + ' ' + o.industryName + ' ' + (o.theme || ''))).slice(0, 12).map(o => ({ ic: 'lightbulb-line', t: o.title, k: o.industryName + ' · ' + o.total, f: () => open(o.id) }))].slice(0, 30); }, [q, opps]);
-  const run = it => { close(); it?.f(); };
+      ...opps.filter(o => s && m(o.title + ' ' + o.industryName + ' ' + (o.theme || ''))).slice(0, 12).map(o => ({ ic: 'lightbulb-line', t: o.title, k: o.industryName + ' · ' + o.total, f: () => open(o.id) }))].slice(0, 30); }, [q, opps, sel, pending]);
+  const run = it => { if (it?.noop) return; close(); it?.f(); };
   return <div className="palette" onClick={close}><div className="box" onClick={e => e.stopPropagation()}>
-    <input autoFocus placeholder="跳转视图、执行命令或搜索机会…（↑↓ 选择，Enter 执行，Esc 关闭）" value={q} onChange={e => { setQ(e.target.value); setI(0); }}
+    <input autoFocus placeholder="跳转、搜索机会，或输入「任务 标题 @机会」「收录 关键词」（↑↓ Enter Esc）" value={q} onChange={e => { setQ(e.target.value); setI(0); }}
       onKeyDown={e => { if (e.key === 'ArrowDown') { e.preventDefault(); setI(x => Math.min(items.length - 1, x + 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setI(x => Math.max(0, x - 1)); } else if (e.key === 'Enter') run(items[i]); else if (e.key === 'Escape') close(); }} />
     <div className="list">{items.length ? items.map((it, k) => <a key={k} className={k === i ? 'on' : ''} onMouseEnter={() => setI(k)} onClick={() => run(it)}><I n={it.ic} /><span className="sp">{it.t}</span><span className="mut" style={{ fontSize: 11 }}>{it.k}</span></a>) : <Empty text="没有匹配项" />}</div></div></div>;
 }

@@ -296,6 +296,27 @@ t('简报含逾期/停滞/观察行业，并用 #opp 链接指向机会', () => 
   assert.strictEqual(parts[1].id, 'o_a');
 });
 
+
+t('命令面板：任务、分拣、工作台视图均可解析，无机会时不臆造对象', () => {
+  const opps = [
+    { id: 'o_a', title: '东南亚冷链专线', industryName: '公路运输', stage: 'discover' },
+    { id: 'o_b', title: '仓储机器人', industryName: '机械', stage: 'screen' }
+  ];
+  const task = WB.parseWorkbenchCommand('任务 联系船东 @冷链', { opps });
+  assert.ok(task.some(x => x.action === 'task:add' && x.payload.opp_id === 'o_a' && x.payload.title === '联系船东'));
+  const need = WB.parseWorkbenchCommand('任务 打电话', { opps });
+  assert.ok(need.length && need[0].action === 'noop');
+  const onSel = WB.parseWorkbenchCommand('任务 打电话', { opps, selOpp: opps[1] });
+  assert.strictEqual(onSel[0].payload.opp_id, 'o_b');
+  const save = WB.parseWorkbenchCommand('收录 仓储', { opps });
+  assert.ok(save.some(x => x.action === 'inbox:triage' && x.payload.action === 'save' && x.payload.id === 'o_b'));
+  const snooze = WB.parseWorkbenchCommand('稍后', { opps, selOpp: opps[0] });
+  assert.strictEqual(snooze[0].payload.action, 'snooze');
+  const go = WB.parseWorkbenchCommand('打开收件箱', { opps });
+  assert.ok(go.some(x => x.action === 'go' && x.payload === 'inbox'));
+  assert.deepStrictEqual(WB.parseWorkbenchCommand('   ', { opps }), []);
+});
+
 const pass = results.filter(r => r.ok).length;
 console.log(`\n${pass}/${results.length} passed`);
 process.exit(pass === results.length ? 0 : 1);

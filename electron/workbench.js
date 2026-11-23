@@ -401,9 +401,50 @@ function splitBriefLinks(text) {
   return parts.length ? parts : [{ text: s }];
 }
 
+
+const WB_VIEWS = [['workbench', '工作台'], ['inbox', '收件箱'], ['detail', '机会工作区'], ['board', '机会看板'], ['briefs', '工作简报']];
+function parseWorkbenchCommand(q, ctx = {}) {
+  const raw = String(q || '').trim();
+  if (!raw) return [];
+  const items = [];
+  const opps = ctx.opps || [];
+  const findOpps = needle => {
+    const s = String(needle || '').toLowerCase();
+    if (!s) return ctx.selOpp ? [ctx.selOpp] : [];
+    return opps.filter(o => ((o.title || '') + ' ' + (o.industryName || '')).toLowerCase().includes(s)).slice(0, 6);
+  };
+  const taskM = raw.match(/^(?:\/)?(?:任务|跟进|task)\s*[:：]?\s+(.+)$/i);
+  if (taskM) {
+    let rest = taskM[1].trim(), needle = '';
+    const at = rest.match(/^(.*?)\s+@(.+)$/);
+    if (at) { rest = at[1].trim(); needle = at[2].trim(); }
+    const targets = needle ? findOpps(needle) : (ctx.selOpp ? [ctx.selOpp] : findOpps(rest).length ? [] : []);
+    // if @name used, target those; else current selection; if no sel, require @
+    if (!targets.length) {
+      items.push({ id: 'task-need-opp', group: '跟进', label: '添加任务需要指定机会：任务 ' + rest + ' @机会关键词', action: 'noop', payload: {} });
+    } else {
+      for (const o of targets) items.push({ id: 'task-' + o.id, group: '跟进', label: '为「' + o.title + '」添加任务「' + rest + '」', action: 'task:add', payload: { opp_id: o.id, title: rest } });
+    }
+  }
+  const triageMap = [['收录', 'save'], ['保存', 'save'], ['稍后', 'snooze'], ['忽略', 'dismiss'], ['放回', 'restore']];
+  for (const [zh, act] of triageMap) {
+    const re = new RegExp('^(?:\\/)?' + zh + '(?:\\s+|$)(.*)$');
+    const m = raw.match(re);
+    if (!m) continue;
+    const needle = (m[1] || '').trim();
+    const targets = needle ? findOpps(needle) : (ctx.selOpp ? [ctx.selOpp] : (ctx.pending || []).slice(0, 5));
+    if (!targets.length) items.push({ id: 'triage-none-' + act, group: '分拣', label: '没有可' + zh + '的机会（先搜索标题，或打开一条机会）', action: 'noop', payload: {} });
+    else for (const o of targets) items.push({ id: 'triage-' + act + '-' + o.id, group: '分拣', label: zh + '「' + o.title + '」', action: 'inbox:triage', payload: { id: o.id, kind: 'opp', action: act, extra: act === 'save' ? { stage: 'screen' } : act === 'snooze' ? { days: 1 } : {} } });
+    break;
+  }
+  const viewHit = WB_VIEWS.filter(v => v[1].includes(raw) || v[0].includes(raw.toLowerCase()) || raw === '去' + v[1] || raw === '打开' + v[1]);
+  for (const [k, n] of viewHit) items.push({ id: 'go-' + k, group: '视图', label: '打开' + n, action: 'go', payload: k });
+  return items;
+}
+
 module.exports = {
   STAGE_CN, STAGE_NEXT, ACTIVE_STAGES, todaySH, addDaysSH, weekStartSH, weekKey, nextStage, migrate,
   inboxStatusOf, isPending, groupInbox, triagePatch, newTaskId, normalizeTask, taskState, dueTasks,
   csvEscape, escHtml, pipelineRows, pipelineCsv, pipelineHtml, loopBriefSections, signalInbox,
-  ROLE_HOME, resolveHomeView, lastRefreshSummary, emptyStateCopy, taskAlertHits, notifOpenTarget, workspaceDigest, snapshotOppTriage, snapshotSigTriage, undoTriagePatch, makeUndoEntry, batchTriagePlan, inboxKeyAction, STALL_DAYS, daysBetween, stageChangedDay, pipelineHealth, briefOppLink, splitBriefLinks
+  ROLE_HOME, resolveHomeView, lastRefreshSummary, emptyStateCopy, taskAlertHits, notifOpenTarget, workspaceDigest, snapshotOppTriage, snapshotSigTriage, undoTriagePatch, makeUndoEntry, batchTriagePlan, inboxKeyAction, STALL_DAYS, daysBetween, stageChangedDay, pipelineHealth, briefOppLink, splitBriefLinks, WB_VIEWS, parseWorkbenchCommand
 };
