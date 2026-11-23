@@ -31,3 +31,9 @@
 切换阶段时写入 `stageChangedAt`。管道列表/看板/导出据此计算停留天数；初筛 7 天、深研/验证 14 天、立项 21 天无推进则提示「停滞」。管道中的机会如果没有带到期日的跟进任务，会提示「缺下一步」。逾期任务行和卡片高亮。没有阶段变更时间的旧记录不会被假装成停滞。阶段键仍是 discover/screen/research/validate/go/drop。看板列按 `stage || 'discover'` 归类，噪声簇不进看板。
 
 主要文件：`electron/workbench.js`、`electron/main.js`、`src/views2.jsx`。
+
+## r6 简报驱动行动：逾期、停滞、观察行业可一键跳转
+
+每日/每周简报增加「需要处理」（逾期任务与阶段停滞的机会）和「观察中的行业与机会」。管道项与待办标题写成 `[标题](#opp/<id>)`。工作简报页和工作台中的简报预览把这些链接变成点击，直接打开对应机会工作区；落盘的 Markdown 仍可在编辑器里跳转。不另发外网。
+
+主要文件：`electron/workbench.js`、`src/workbench.jsx`。

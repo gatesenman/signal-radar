@@ -150,13 +150,36 @@ function loopBriefSections({ opps = [], tasks = [], newSignals = 0, week = false
   lines.push('', week ? '## 本周管道' : '## 管道进展');
   lines.push(Object.keys(STAGE_CN).map(k => `${STAGE_CN[k]} ${byStage[k] || 0}`).join(' · '));
   const active = opps.filter(o => ACTIVE_STAGES.includes(o.stage || ''));
-  if (active.length) active.slice(0, 8).forEach(o => lines.push(`- ${o.title}（${STAGE_CN[o.stage] || o.stage}，${o.total} 分）`));
+  if (active.length) active.slice(0, 8).forEach(o => lines.push(`- ${o.id ? briefOppLink(o) : o.title}（${STAGE_CN[o.stage] || o.stage}，${o.total} 分）`));
   else lines.push('- 管道中尚无已分拣机会（可在收件箱收录）');
   const due = dueTasks(tasks, today);
   lines.push('', week ? '## 本周待办与跟进' : '## 待办与跟进');
   if (!tasks.length) lines.push('- 还没有跟进任务。可在机会工作区添加，并设置到期日。');
   else if (!due.length) lines.push('- 今日无到期或逾期任务（未完成 ' + tasks.filter(t => !t.done).length + ' 项）');
-  else due.slice(0, 12).forEach(t => lines.push(`- ${t.due < today ? '逾期' : '今日到期'} ${t.due}：${t.title}${t.oppTitle ? '（' + t.oppTitle + '）' : ''}`));
+  else due.slice(0, 12).forEach(t => {
+    const title = t.opp_id ? '[' + t.title + '](#opp/' + t.opp_id + ')' : t.title;
+    lines.push(`- ${t.due < today ? '逾期' : '今日到期'} ${t.due}：${title}${t.oppTitle ? '（' + t.oppTitle + '）' : ''}`);
+  });
+  const flagged = opps.filter(o => { const h = pipelineHealth(o, today); return h.stuck || h.overdue; });
+  lines.push('', week ? '## 本周需处理' : '## 需要处理');
+  if (!flagged.length && !due.length) lines.push('- 没有逾期任务或停滞的管道机会');
+  else {
+    flagged.slice(0, 12).forEach(o => {
+      const h = pipelineHealth(o, today);
+      const tags = [h.overdue && '任务逾期', h.stuck && '阶段停滞'].filter(Boolean).join(' · ');
+      lines.push(`- ${tags} ${briefOppLink(o)}（${STAGE_CN[o.stage] || o.stage}${h.ageDays != null ? '，' + h.ageDays + ' 天' : ''}）${h.hint ? '：' + h.hint : ''}`);
+    });
+    if (!flagged.length && due.length) lines.push('- 见上方待办：有到期或逾期任务，点标题可打开对应机会');
+  }
+  const watched = opps.filter(o => o.watched && !o.quality?.noise);
+  const inds = {};
+  for (const o of watched) { const k = o.industryName || o.industry || '未分类'; inds[k] = (inds[k] || 0) + 1; }
+  lines.push('', week ? '## 本周观察行业' : '## 观察中的行业与机会');
+  if (!watched.length) lines.push('- 还没有观察中的机会。收录到管道时会默认加入观察。');
+  else {
+    lines.push('- 观察行业：' + Object.entries(inds).map(([k, n]) => k + ' ' + n).join(' · '));
+    watched.slice(0, 10).forEach(o => lines.push(`- ${briefOppLink(o)}（${STAGE_CN[o.stage || 'discover'] || o.stage}，${o.total} 分）`));
+  }
   lines.push('', week ? '## 本周新信号' : '## 新信号');
   lines.push(newSignals ? `- 本周期间新增 ${newSignals} 条信号` : '- 本周期间无新增信号记录');
   lines.push(`- 收件箱待分拣 ${g.pending.length} · 稍后 ${g.snoozed.length} · 已收录 ${g.saved.length}`);
@@ -364,9 +387,23 @@ function pipelineHealth(o = {}, today, opts = {}) {
   return { stage, ageDays, nextDue, overdue, needsAction, stuck, stallAfter: limit || null, hint };
 }
 
+
+function briefOppLink(o, label) { return '[' + (label || o.title || o.id) + '](#opp/' + o.id + ')'; }
+function splitBriefLinks(text) {
+  const re = /\[([^\]]+)\]\(#(opp|task)\/([^)]+)\)/g, parts = [];
+  let last = 0, m, s = String(text ?? '');
+  while ((m = re.exec(s))) {
+    if (m.index > last) parts.push({ text: s.slice(last, m.index) });
+    parts.push({ text: m[1], kind: m[2], id: m[3] });
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) parts.push({ text: s.slice(last) });
+  return parts.length ? parts : [{ text: s }];
+}
+
 module.exports = {
   STAGE_CN, STAGE_NEXT, ACTIVE_STAGES, todaySH, addDaysSH, weekStartSH, weekKey, nextStage, migrate,
   inboxStatusOf, isPending, groupInbox, triagePatch, newTaskId, normalizeTask, taskState, dueTasks,
   csvEscape, escHtml, pipelineRows, pipelineCsv, pipelineHtml, loopBriefSections, signalInbox,
-  ROLE_HOME, resolveHomeView, lastRefreshSummary, emptyStateCopy, taskAlertHits, notifOpenTarget, workspaceDigest, snapshotOppTriage, snapshotSigTriage, undoTriagePatch, makeUndoEntry, batchTriagePlan, inboxKeyAction, STALL_DAYS, daysBetween, stageChangedDay, pipelineHealth
+  ROLE_HOME, resolveHomeView, lastRefreshSummary, emptyStateCopy, taskAlertHits, notifOpenTarget, workspaceDigest, snapshotOppTriage, snapshotSigTriage, undoTriagePatch, makeUndoEntry, batchTriagePlan, inboxKeyAction, STALL_DAYS, daysBetween, stageChangedDay, pipelineHealth, briefOppLink, splitBriefLinks
 };

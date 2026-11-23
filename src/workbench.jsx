@@ -55,7 +55,7 @@ export function Workbench({ opps, stats, open, refresh, busy, say, setView, oppC
     <div className="card" style={{ marginTop: 12 }}><h3><span><I n="kanban-view" /> 管道一览</span><button className="s" onClick={() => setView('board')}>打开看板</button></h3>
       <div className="pipe">{STAGES.map(([k, n]) => <span key={k} className={(byStage[k] || 0) ? 'on' : ''} onClick={() => setView('board')}>{n} {byStage[k] || 0}</span>)}</div></div>
     {brief?.md && <div className="card brief" style={{ marginTop: 12 }}><h3><span><I n="newspaper-line" /> 每日简报 {brief.day}</span><button className="s" onClick={() => setView('briefs')}>工作简报</button></h3>
-      <pre className="wb-brief">{brief.md.split('\n').slice(0, 18).join('\n')}</pre></div>}
+      <BriefMd md={brief.md.split('\n').slice(0, 24).join('\n')} open={open} /></div>}
   </>;
 }
 
@@ -163,7 +163,17 @@ function InboxList({ opps, sigs, open, oppCtx, empty, extra, cur, setCur, picked
   </div>;
 }
 
-export function Briefs({ say, setView, stats, refresh, busy }) {
+
+function BriefMd({ md, open }) {
+  const lines = String(md || '').split('\n');
+  return <div className="brief-md">{lines.map((line, i) => {
+    const parts = WB.splitBriefLinks(line);
+    const isH = /^##\s/.test(line);
+    return <div key={i} className={isH ? 'brief-h' : 'brief-p'}>{parts.map((p, j) => p.kind && p.id ? <a key={j} className="l" href="#" onClick={e => { e.preventDefault(); if (p.kind === 'opp' && open) open(p.id, 'work'); }}>{p.text}</a> : <span key={j}>{p.text || '\u00a0'}</span>)}</div>;
+  })}</div>;
+}
+
+export function Briefs({ say, setView, stats, refresh, busy, open }) {
   const [kind, setKind] = useState('daily'), [daily, setDaily] = useState(null), [weekly, setWeekly] = useState(null), [list, setList] = useState([]), [ld, setLd] = useState(false);
   const reload = () => { api.call('brief:daily').then(setDaily).catch(() => {}); api.call('brief:weekly').then(setWeekly).catch(() => {}); api.call('brief:daily:list').then(setList).catch(() => setList([])); };
   useEffect(() => { reload(); return api.on('brief', reload); }, []);
@@ -178,7 +188,7 @@ export function Briefs({ say, setView, stats, refresh, busy }) {
   </PH>
     {empty ? <Empty refresh={refresh} busy={busy} text={emptyOf('briefs', stats, busy).text} kind={emptyOf('briefs', stats, busy).kind} errors={emptyOf('briefs', stats, busy).errors} /> :
       !cur?.md ? <div className="card mut">还没有{kind === 'weekly' ? '每周' : '每日'}简报。点击「立即生成」。每日快照后也会自动生成每日简报（可在设置中关闭）。</div> :
-      <div className="card brief"><pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, maxHeight: 560, overflow: 'auto', margin: 0 }}>{cur.md}</pre></div>}
+      <div className="card brief"><BriefMd md={cur.md} open={open} /></div>}
     {!!list.length && <div className="card" style={{ marginTop: 12 }}><h3><span><I n="file-text-line" /> 本机已保存</span><span className="mut">{list.length} 份</span></h3>
       <div className="mut">{list.slice(0, 20).join(' · ')}</div></div>}
   </>;

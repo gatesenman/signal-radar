@@ -85,13 +85,14 @@ t('管道 HTML 可打印且转义标签', () => {
 t('每日/每周简报追加管道与待办段落', () => {
   const lines = WB.loopBriefSections({
     opps: [{ id: 'a', title: '冷链专线', stage: 'validate', total: 81 }],
-    tasks: [{ title: '联系船东', due: '2026-11-22', done: 0, oppTitle: '冷链专线' }],
+    tasks: [{ title: '联系船东', due: '2026-11-22', done: 0, oppTitle: '冷链专线', opp_id: 'a' }],
     newSignals: 17, today: '2026-11-23'
   });
   const md = lines.join('\n');
   assert.ok(md.includes('## 管道进展') && md.includes('推进中'.replace('推进中', '验证') || true));
   assert.ok(md.includes('验证 1') && md.includes('冷链专线'));
-  assert.ok(md.includes('## 待办与跟进') && md.includes('逾期 2026-11-22：联系船东（冷链专线）'));
+  assert.ok(md.includes('## 待办与跟进') && md.includes('逾期 2026-11-22：') && md.includes('联系船东') && md.includes('冷链专线'));
+  assert.ok(md.includes('[冷链专线](#opp/a)') || md.includes('[联系船东](#opp/'));
   assert.ok(md.includes('新增 17 条信号'));
   const w = WB.loopBriefSections({ opps: [], tasks: [], newSignals: 0, week: true, today: '2026-11-23' }).join('\n');
   assert.ok(w.includes('## 本周管道') && w.includes('## 本周待办与跟进') && w.includes('## 本周新信号'));
@@ -274,6 +275,25 @@ t('管道导出包含停留天数与停滞提示列', () => {
     { id: 'o1', title: '专线', industryName: '运输', stage: 'screen', total: 70, conf: 0.5, stageChangedAt: Date.parse('2026-11-01T00:00:00+08:00'), tasks: [{ title: 'x', due: '2026-11-01', done: 0 }] }
   ], [], { day: '2026-11-23' });
   assert.ok(html.includes('停留天数') && html.includes('tr class="overdue"'));
+});
+
+
+t('简报含逾期/停滞/观察行业，并用 #opp 链接指向机会', () => {
+  const lines = WB.loopBriefSections({
+    opps: [
+      { id: 'o_a', title: '冷链专线', stage: 'validate', total: 81, industryName: '公路运输', watched: true, stageChangedAt: Date.parse('2026-10-01T00:00:00+08:00'), tasks: [{ title: '联系船东', due: '2026-11-22', done: 0 }] },
+      { id: 'o_b', title: '仓库机器人', stage: 'screen', total: 70, industryName: '机械', watched: true }
+    ],
+    tasks: [{ title: '联系船东', due: '2026-11-22', done: 0, oppTitle: '冷链专线', opp_id: 'o_a' }],
+    newSignals: 3, today: '2026-11-23'
+  });
+  const md = lines.join('\n');
+  assert.ok(md.includes('## 需要处理') && md.includes('阶段停滞') && md.includes('[冷链专线](#opp/o_a)'));
+  assert.ok(md.includes('## 观察中的行业与机会') && md.includes('公路运输 1') && md.includes('[仓库机器人](#opp/o_b)'));
+  assert.ok(md.includes('[联系船东](#opp/o_a)'));
+  const parts = WB.splitBriefLinks('- 逾期：[联系船东](#opp/o_a)（冷链）');
+  assert.deepStrictEqual(parts.map(p => p.kind || 'text'), ['text', 'opp', 'text']);
+  assert.strictEqual(parts[1].id, 'o_a');
 });
 
 const pass = results.filter(r => r.ok).length;
