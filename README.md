@@ -2,6 +2,28 @@
 
 AI 创业机会发现桌面应用：从 80+ 个全球公开数据源采集信号，在本机做语义聚类和可解释评分，输出机会陈述、TAM/SAM/SOM、竞争格局、Why Now、产业链卡脖子分析和投委会备忘录。所有结论都附来源链接，假设会明确标注。
 
+## 下载
+
+当前 GitHub 上**没有**已发布安装包（无 Release）。`package.json` 版本为 **6.0.0**。Windows 打包可用 `npm run pack:win` 或 `npx electron-builder --win --x64`（Linux 交叉构建需要 Wine，且需准备 Windows 版 sharp）。本轮因磁盘不足未打包上传。
+
+## 界面截图
+
+以下为仓库 `shots/` 中已有的真实产品界面（总览等），不是生成图。截图版本可能早于 6.0 文案迭代，但确是本应用窗口。
+
+![总览](shots/v2-dashboard.png)
+
+*总览 / Dashboard*
+
+![机会雷达](shots/radar.png)
+
+*机会雷达 / Opportunity radar*
+
+![机会详情](shots/detail.png)
+
+*机会详情 / Opportunity detail*
+
+更多见仓库中的 `shots/`（未全部嵌入）。
+
 ## 运行说明
 本仓库提供源码，不包含安装包。6.0 是端到端工作台：侧栏「工作循环」按 工作台 → 收件箱 → 机会工作区 → 管道 → 工作简报 走完发现、分拣、调研、跟进和导出。详见 `NOTES-6.0.md`。
 
@@ -54,3 +76,25 @@ npx electron-builder --linux AppImage
 ## 许可证
 本仓库尚未附带 LICENSE 文件，许可证未指定。
 
+
+---
+
+## English
+
+**Signal Radar (商机雷达) 6.0** is a desktop app that collects public signals, clusters them locally, and produces scored opportunity briefs with sources. Data stays on the machine by default.
+
+### Download
+
+No published installer on GitHub Releases. Package with `npm run pack:win` or `npx electron-builder --win --x64`. Cross-building on Linux needs Wine and a Windows sharp binary. This pass did not build or upload packages (disk).
+
+### Screenshots
+
+The images above are existing real UI captures under `shots/`. They are not generated artwork. Filenames suggest an earlier UI generation than the 6.0 copy, but they show this product.
+
+### Run from source
+
+```
+npm install
+npx vite build
+npx electron .
+```
