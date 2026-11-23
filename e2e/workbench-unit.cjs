@@ -381,6 +381,15 @@ t('工作台关注：过滤观察/行业/分数，并生成简报关注范围说
   assert.ok(md.includes('## 关注范围') && md.includes('不是全库'));
 });
 
+
+t('6.1 中文文案在英文词典中有整句条目', () => {
+  const fs = require('fs'), path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, '../src/i18n-en.js'), 'utf8');
+  const exact = src.slice(src.indexOf('export const EXACT'), src.indexOf('export const PHRASES'));
+  const need = ['工作台', '收件箱', '研判摘要', '机会一页纸', '只看观察中的', '已撤销上一次分拣', '缺下一步', '到期 / 逾期任务', '打开工作台', '把新发现分拣进管道：收录、稍后、忽略，或直接指定阶段。忽略不会删除雷达里的机会。'];
+  for (const s of need) assert.ok(exact.includes("'" + s + "'") || exact.includes('"' + s + '"'), 'missing en for: ' + s);
+});
+
 const pass = results.filter(r => r.ok).length;
 console.log(`\n${pass}/${results.length} passed`);
 process.exit(pass === results.length ? 0 : 1);

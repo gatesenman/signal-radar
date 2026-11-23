@@ -39,7 +39,7 @@ export function Palette({ views, opps, cmds, go, open, close, sel, onCommand, pe
       ...opps.filter(o => s && m(o.title + ' ' + o.industryName + ' ' + (o.theme || ''))).slice(0, 12).map(o => ({ ic: 'lightbulb-line', t: o.title, k: o.industryName + ' · ' + o.total, f: () => open(o.id) }))].slice(0, 30); }, [q, opps, sel, pending]);
   const run = it => { if (it?.noop) return; close(); it?.f(); };
   return <div className="palette" onClick={close}><div className="box" onClick={e => e.stopPropagation()}>
-    <input autoFocus placeholder="跳转、搜索机会，或输入「任务 标题 @机会」「收录 关键词」（↑↓ Enter Esc）" value={q} onChange={e => { setQ(e.target.value); setI(0); }}
+    <input autoFocus aria-label="命令面板" placeholder="跳转、搜索机会，或输入「任务 标题 @机会」「收录 关键词」（↑↓ Enter Esc）" value={q} onChange={e => { setQ(e.target.value); setI(0); }}
       onKeyDown={e => { if (e.key === 'ArrowDown') { e.preventDefault(); setI(x => Math.min(items.length - 1, x + 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setI(x => Math.max(0, x - 1)); } else if (e.key === 'Enter') run(items[i]); else if (e.key === 'Escape') close(); }} />
     <div className="list">{items.length ? items.map((it, k) => <a key={k} className={k === i ? 'on' : ''} onMouseEnter={() => setI(k)} onClick={() => run(it)}><I n={it.ic} /><span className="sp">{it.t}</span><span className="mut" style={{ fontSize: 11 }}>{it.k}</span></a>) : <Empty text="没有匹配项" />}</div></div></div>;
 }

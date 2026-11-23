@@ -36,8 +36,8 @@ export function Workbench({ opps, stats, open, refresh, busy, say, setView, oppC
   return <><PH icon="apps-2-line" title="工作台" sub={`信号 ${stats.total.toLocaleString()} · 机会 ${opps.length} · 待分拣 ${pending.length} · 到期任务 ${due.length}`}>
     <button onClick={() => refresh()} disabled={busy}><I n={busy ? 'loader-4-line' : 'refresh-line'} />{busy ? '采集中…' : '立即采集'}</button>
     <button className="s" onClick={() => setView('inbox')}><I n="clipboard-line" />去收件箱{pending.length ? ' ' + pending.length : ''}</button>
-    <label className="mut" style={{ fontSize: 12 }}><input type="checkbox" checked={!!prefs?.focusWatched} onChange={e => savePrefs({ focusWatched: e.target.checked })} /> 只看观察中的</label>
-    <label className="mut" style={{ fontSize: 12 }}>最低分 <input type="number" min="0" max="100" value={prefs?.minScore || 0} onChange={e => savePrefs({ minScore: +e.target.value || 0 })} style={{ width: 56 }} /></label>
+    <label className="mut" style={{ fontSize: 12 }}><input type="checkbox" checked={!!prefs?.focusWatched} onChange={e => savePrefs({ focusWatched: e.target.checked })} aria-label="只看观察中的机会" /> 只看观察中的</label>
+    <label className="mut" style={{ fontSize: 12 }}>最低分 <input type="number" min="0" max="100" value={prefs?.minScore || 0} onChange={e => savePrefs({ minScore: +e.target.value || 0 })} style={{ width: 56 }} aria-label="工作台最低分" /></label>
   </PH>
     {!!scopeOn && <div className="mut" style={{ margin: '0 0 8px', fontSize: 12 }}>工作台已按关注筛选{WB.focusLabel(prefs) ? '：' + WB.focusLabel(prefs) : ''}（{pool.length}/{opps.length}）。简报生成时也会使用同一范围。</div>}
     <div className="wb-inds">{[...new Set(opps.map(o => o.industry).filter(Boolean))].slice(0, 16).map(code => { const name = opps.find(o => o.industry === code)?.industryName || code; const on = (prefs?.watchIndustries || []).includes(code); return <button key={code} className={'s' + (on ? ' on' : '')} onClick={() => { const cur = prefs?.watchIndustries || []; savePrefs({ watchIndustries: on ? cur.filter(x => x !== code) : [...cur, code] }); }}>{name}</button>; })}</div>

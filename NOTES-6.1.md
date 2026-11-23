@@ -61,3 +61,9 @@
 关注设置写入本机 `wbPrefs`（不是只放在浏览器 localStorage）：是否只看观察中的机会、关注的行业代码、最低分、收件箱当前页签与稍后天数、看板模式与纪律筛选。工作台按此过滤 KPI 和列表，并标明「不是全库」。生成每日/每周简报时若设置了关注，只纳入该范围，并在简报里写明关注条件。
 
 主要文件：`electron/workbench.js`、`electron/main.js`、`src/workbench.jsx`、`src/views2.jsx`。
+
+## r11 中英词典与键盘/可访问性
+
+为 6.0/6.1 工作台新增文案补全英文词典（整句 EXACT + 常用短语 PHRASES），切换到 English 时工作台、收件箱、简报、一页纸、关注筛选和设置项可翻译。收件箱快捷键写入 F1 快捷键表；命令面板、关注筛选和勾选项补了 `aria-label`，页签使用 `role="tablist"`。视觉语言仍是字体/SVG 图标，不以 emoji 当主图标。
+
+主要文件：`src/i18n-en.js`、`src/App.jsx`、`src/shell21.jsx`、`src/workbench.jsx`。
