@@ -41,11 +41,11 @@ export function Alerts({ load, say }) {
   const [rules, setRules] = useState([]), [notifs, setNotifs] = useState([]), [form, setForm] = useState({ type: 'score', value: '70' });
   const reload = () => Promise.all([api.call('alerts:list'), api.call('notif:list')]).then(([r, n]) => { setRules(r); setNotifs(n); });
   useEffect(() => { reload(); }, []);
-  return <><PH icon="notification-3-line" title="提醒" sub="评分阈值 · 关键词 · 行业信号突增"><button className="s" onClick={() => api.call('notif:read').then(reload)}><I n="check-double-line" />全部已读</button></PH>
+  return <><PH icon="notification-3-line" title="提醒" sub="评分阈值 · 关键词 · 行业 · 融资 · 观察动态 · 到期任务（内置，可删除以关闭）"><button className="s" onClick={() => api.call('notif:read').then(reload)}><I n="check-double-line" />全部已读</button></PH>
     <div className="grid g21"><div className="card"><h3><span><I n="alarm-line" /> 规则</span></h3><div className="row"><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} style={{ width: 120 }}><option value="score">评分 ≥</option><option value="keyword">关键词</option><option value="industry">行业新机会</option><option value="funding">融资 ≥ $M</option><option value="watch">观察中有新动态</option></select>
       <input value={form.value} onChange={e => setForm({ ...form, value: e.target.value })} placeholder={{ score: '分数阈值', keyword: '关键词', industry: 'GICS 代码如 4510', funding: '金额 $M' }[form.type]} />
       <button onClick={async () => { await api.call('alerts:add', form); setForm({ type: 'score', value: '70' }); reload(); say('已添加'); }}><I n="add-line" /></button></div>
-      <table style={{ marginTop: 8 }}><tbody>{rules.map(r => <tr key={r.id}><td>{r.type}</td><td>{r.value}</td><td><button className="s" onClick={async () => { await api.call('alerts:del', r.id); reload(); }}><I n="delete-bin-line" /></button></td></tr>)}</tbody></table></div>
+      <table style={{ marginTop: 8 }}><tbody>{rules.map(r => <tr key={r.id}><td>{{ score: '评分 ≥', keyword: '关键词', industry: '行业新机会', funding: '融资 ≥ $M', watch: '观察中有新动态', task: '到期 / 逾期任务' }[r.type] || r.type}</td><td>{r.type === 'task' ? '工作台跟进任务（每个任务每个到期日只通知一次）' : r.value}</td><td><button className="s" onClick={async () => { await api.call('alerts:del', r.id); reload(); }}><I n="delete-bin-line" /></button></td></tr>)}</tbody></table></div>
       <div className="card"><h3><span><I n="notification-badge-line" /> 通知</span></h3><div className="feed">{notifs.map(n => <div key={n.id} style={{ opacity: n.read ? .5 : 1 }}><b>{n.title}</b><div className="mut">{new Date(n.ts).toLocaleString('zh-CN')} · {n.body}</div></div>)}</div></div></div></>;
 }
 export function Sources({ cfg, setCfg, refresh, busy, prog, say }) {

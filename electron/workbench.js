@@ -228,9 +228,35 @@ function emptyStateCopy({ busy, lastRefresh, hasSignals, view = 'workbench' } = 
   return { kind: 'empty', text: pack.empty, errors: [] };
 }
 
+
+function taskAlertHits(tasks, today) {
+  today = today || todaySH();
+  const out = [];
+  for (const t of tasks || []) {
+    const st = taskState(t, today);
+    if (st !== 'overdue' && st !== 'today') continue;
+    const opp = t.oppTitle || '';
+    const ref = (t.opp_id || '') + '::task:' + t.id + ':' + (t.due || '') + ':' + st;
+    if (st === 'overdue') {
+      out.push({ ref, state: st, opp_id: t.opp_id, titleZh: '逾期任务：' + t.title, titleEn: 'Overdue task: ' + t.title, bodyZh: (opp ? opp + ' · ' : '') + '到期日 ' + t.due, bodyEn: (opp ? opp + ' · ' : '') + 'due ' + t.due });
+    } else {
+      out.push({ ref, state: st, opp_id: t.opp_id, titleZh: '今日到期：' + t.title, titleEn: 'Due today: ' + t.title, bodyZh: (opp ? opp + ' · ' : '') + '请在工作区跟进', bodyEn: (opp ? opp + ' · ' : '') + 'Follow up in the workspace' });
+    }
+  }
+  out.sort((a, b) => a.state === b.state ? 0 : (a.state === 'overdue' ? -1 : 1));
+  return out;
+}
+function notifOpenTarget(ref) {
+  if (!ref) return null;
+  const m = /^(o_[A-Za-z0-9]+)::task:/.exec(String(ref));
+  if (m) return m[1];
+  if (String(ref).startsWith('o_')) return String(ref).split(':')[0];
+  return null;
+}
+
 module.exports = {
   STAGE_CN, STAGE_NEXT, ACTIVE_STAGES, todaySH, addDaysSH, weekStartSH, weekKey, nextStage, migrate,
   inboxStatusOf, isPending, groupInbox, triagePatch, newTaskId, normalizeTask, taskState, dueTasks,
   csvEscape, escHtml, pipelineRows, pipelineCsv, pipelineHtml, loopBriefSections, signalInbox,
-  ROLE_HOME, resolveHomeView, lastRefreshSummary, emptyStateCopy
+  ROLE_HOME, resolveHomeView, lastRefreshSummary, emptyStateCopy, taskAlertHits, notifOpenTarget
 };

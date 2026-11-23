@@ -29,6 +29,7 @@ async function initDb() {
   CREATE TABLE IF NOT EXISTS logs(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, msg TEXT);`);
   WB.migrate(run);
   if (!all('SELECT 1 FROM alerts').length) { run("INSERT INTO alerts(type,value) VALUES('score','70')"); run("INSERT INTO alerts(type,value) VALUES('funding','50')"); }
+  if (!all("SELECT 1 FROM alerts WHERE type='task'").length) run("INSERT INTO alerts(type,value,enabled) VALUES('task','due',1)");
   save(true);
 }
 const getK = (k, d) => { const r = all('SELECT v FROM settings WHERE k=?', [k])[0]; return r ? JSON.parse(r.v) : d; };
@@ -139,6 +140,7 @@ function checkAlerts() {
     if (a.type === 'funding') sigs.map(E.extractFunding).filter(f => f && f.amountM >= +a.value).forEach(f => hits.push([f.url, NT(`融资 ≥ $${a.value}M：${f.company}`, `Funding ≥ $${a.value}M: ${f.company}`), f.title]));
     if (a.type === 'industry') opps.filter(o => o.industry && o.industry.startsWith(a.value)).forEach(o => hits.push([o.id, NT(`行业 ${a.value} 新机会：${o.title}`, `New in industry ${a.value}: ${o.title}`), o.industryName]));
     if (a.type === 'watch') opps.filter(o => o.watched && o.metrics.last3 > 0).forEach(o => hits.push([o.id + ':' + new Date().toDateString(), NT(`观察中的机会有新动态：${o.title}`, `Watched opportunity updated: ${o.title}`), NT(`近 3 天 ${o.metrics.last3} 条新信号`, `${o.metrics.last3} new signals in 3 days`)]));
+    if (a.type === 'task') WB.taskAlertHits(withOppTitles(all('SELECT * FROM tasks')), WB.todaySH()).forEach(h => hits.push([h.ref, NT(h.titleZh, h.titleEn), NT(h.bodyZh, h.bodyEn)]));
     for (const [ref, title, body] of hits) { run('INSERT OR IGNORE INTO notifications(ts,alert_id,ref,title,body) VALUES(?,?,?,?,?)', [Date.now(), a.id, ref, title, body]);
       if (db.getRowsModified() && Notification.isSupported() && !process.env.SR_SHOT) new Notification({ title: NT('商机雷达 · ', 'Signal Radar · ') + title, body }).show(); } }
 }
@@ -416,6 +418,8 @@ app.whenReady().then(async () => {
       }
     } catch (e) { log('首次启动检查失败：' + (e.message || e)); }
   }, 800);
+  // 启动后检查到期/逾期任务等提醒（插入走 UNIQUE(alert_id, ref)，不会重复推送）
+  setTimeout(() => { if (!process.env.SR_SHOT) try { checkAlerts(); } catch (e) { log('启动提醒检查失败：' + (e.message || e)); } }, 1600);
   if (process.env.SR_SHOT) { const dir = process.env.SR_SHOT; fs.mkdirSync(dir, { recursive: true });
     win.webContents.on('console-message', (e, l, m) => l >= 2 && console.log('[renderer]', m));
     if (!process.env.SR_NOFETCH) console.log(JSON.stringify(await refresh(process.env.SR_ONLY ? { only: process.env.SR_ONLY.split(',') } : {})));

@@ -158,6 +158,29 @@ t('空状态文案：采集中、失败、尚无数据三种互不混淆', () =>
   assert.strictEqual(has.kind, 'empty'); // 已有信号时不把失败当成空库
 });
 
+
+t('到期任务提醒：只覆盖今日与逾期，ref 含机会与状态且不把完成项算进去', () => {
+  const hits = WB.taskAlertHits([
+    { id: 't1', opp_id: 'o_abc123abc12', title: '要舱位', due: '2026-11-22', done: 0, oppTitle: '东南亚专线' },
+    { id: 't2', opp_id: 'o_abc123abc12', title: '回访客户', due: '2026-11-23', done: 0, oppTitle: '东南亚专线' },
+    { id: 't3', opp_id: 'o_zzz', title: '已完成', due: '2026-11-22', done: 1 },
+    { id: 't4', opp_id: 'o_zzz', title: '以后再说', due: '2026-11-28', done: 0 },
+    { id: 't5', opp_id: 'o_zzz', title: '没写日期', due: '', done: 0 }
+  ], '2026-11-23');
+  assert.deepStrictEqual(hits.map(h => h.state), ['overdue', 'today']);
+  assert.ok(hits[0].ref.includes('o_abc123abc12::task:t1:2026-11-22:overdue'));
+  assert.ok(hits[0].titleZh.includes('逾期任务：要舱位'));
+  assert.ok(hits[1].titleZh.includes('今日到期：回访客户'));
+  assert.strictEqual(hits.length, 2);
+});
+t('提醒点击目标：任务通知回到机会，普通机会 id 仍可用，无关 ref 不跳转', () => {
+  assert.strictEqual(WB.notifOpenTarget('o_abc123abc12::task:t1:2026-11-22:overdue'), 'o_abc123abc12');
+  assert.strictEqual(WB.notifOpenTarget('o_abc123abc12'), 'o_abc123abc12');
+  assert.strictEqual(WB.notifOpenTarget('o_abc123abc12:Mon Nov 23 2026'), 'o_abc123abc12');
+  assert.strictEqual(WB.notifOpenTarget('https://example.com'), null);
+  assert.strictEqual(WB.notifOpenTarget(''), null);
+});
+
 const pass = results.filter(r => r.ok).length;
 console.log(`\n${pass}/${results.length} passed`);
 process.exit(pass === results.length ? 0 : 1);

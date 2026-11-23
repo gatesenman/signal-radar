@@ -7,3 +7,9 @@
 默认首页改为工作台。设置里可选择「按首次引导的角色」以保留 5.0 首页（创业者→机会维度、VC→机会雷达、企业战略→产业链）。首次采集的空状态区分：正在采集、全部失败、部分失败、尚无数据；失败会列出真实的数据源错误，不会用占位数据冒充已采集。
 
 主要文件：`electron/workbench.js`、`electron/main.js`、`src/App.jsx`、`src/workbench.jsx`、`src/views2.jsx`、`src/ui.jsx`、`src/shell21.jsx`。
+
+## r2 到期 / 逾期任务走现有提醒通道
+
+跟进任务在到期日或逾期时写入本机 `notifications`，并走系统通知（与每日简报、高分规则同一条路径）。`ref` 含机会 id、任务 id、到期日和状态，配合表上的 UNIQUE(alert_id, ref)，每个任务在同一到期日同一状态只通知一次，不会天天重复刷。提醒中心点击可回到该机会工作区。内置规则「到期 / 逾期任务」可在提醒页删除以关闭。应用启动后会检查一次；采集/聚类后也会检查。
+
+主要文件：`electron/workbench.js`、`electron/main.js`、`src/shell21.jsx`、`src/views2.jsx`。

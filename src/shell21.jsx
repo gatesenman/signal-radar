@@ -1,5 +1,7 @@
 // v2.1 标准交互组件：命令面板、首次引导、提醒抽屉、错误边界、中英文、主题、观察列表、标准数据表
 import { React, useEffect, useState, useMemo, api, I, Empty, PH, STAGES } from './ui.jsx';
+import * as WBmod from '../electron/workbench.js';
+const WB = WBmod.default || WBmod;
 const EN = { 工作台: 'Workbench', 收件箱: 'Inbox', 工作循环: 'Loop', 工作简报: 'Briefs', 工作区: 'Workspace', 待分拣: 'To triage', 已收录: 'Saved', 已忽略: 'Dismissed', 稍后: 'Snooze', 今日待办: 'Due today', 管道中: 'In pipeline', 管道一览: 'Pipeline snapshot', 跟进任务: 'Follow-ups', 可打印预览: 'Print preview', '导出 CSV': 'Export CSV', '导出 HTML': 'Export HTML', 总览: 'Overview', 信号流: 'Signals', 机会雷达: 'Radar', 机会维度: 'Dimensions', 机会详情: 'Detail', 不对称信息: 'Asymmetry', 资本与融资: 'Capital', 行业覆盖度: 'Coverage', 产业链: 'Supply chain', 论文与统计: 'Papers & stats', 宏观与贸易: 'Macro & trade', 机会看板: 'Pipeline', 验证工作流: 'Validation', 机会对比: 'Compare', 观察列表: 'Watchlist', 提醒: 'Alerts', 数据源: 'Sources', '报告与 IC 备忘录': 'Reports & IC memo', 共享协作: 'Share', 运行日志: 'Logs', 设置: 'Settings',
   发现: 'Discover', 筛选: 'Screen', 研究: 'Research', 验证: 'Validate', 决策: 'Decide', 跟踪: 'Track', 工具: 'Tools', 立即采集: 'Collect now', 重新聚类: 'Re-cluster', 报告: 'Report', 就绪: 'Ready', 采集中: 'Collecting', 搜索: 'Search', 初筛: 'Screen', 深研: 'Deep dive', 立项: 'Go', 放弃: 'Drop' };
 let LANG = localStorage.getItem('lang') || 'zh';
@@ -60,7 +62,7 @@ export function AlertDrawer({ close, open }) {
   const [rows, setRows] = useState(null);
   useEffect(() => { api.call('notif:list').then(setRows).catch(() => setRows([])); }, []);
   return <div className="drawer" onClick={e => e.stopPropagation()}><h3><span><I n="notification-3-line" /> 提醒中心</span><span><button className="s" onClick={async () => { await api.call('notif:read'); setRows(r => r.map(x => ({ ...x, read: 1 }))); }}>全部已读</button> <button className="x" onClick={close}><I n="close-line" /></button></span></h3>
-    {!rows ? <div className="skel" style={{ height: 200 }} /> : !rows.length ? <Empty text="暂无提醒。可在「提醒」里设置关键词、行业或分数阈值规则。" /> : rows.map(r => <div key={r.id} className={'kpi' + (r.read ? '' : ' unread')} style={{ marginBottom: 6, cursor: 'pointer' }} onClick={() => r.ref?.startsWith('o_') && open(r.ref)}>
+    {!rows ? <div className="skel" style={{ height: 200 }} /> : !rows.length ? <Empty text="暂无提醒。到期或逾期的跟进任务会在这里出现；也可在「提醒」里设置关键词、行业或分数阈值规则。" /> : rows.map(r => <div key={r.id} className={'kpi' + (r.read ? '' : ' unread')} style={{ marginBottom: 6, cursor: WB.notifOpenTarget(r.ref) ? 'pointer' : 'default' }} onClick={() => { const id = WB.notifOpenTarget(r.ref); if (id) open(id, 'work'); }}>
       <b style={{ fontSize: 13 }}>{r.title}</b><div className="mut" style={{ fontSize: 11 }}>{r.body}</div><div className="mut" style={{ fontSize: 10 }}>{new Date(r.ts).toLocaleString('zh-CN')}</div></div>)}</div>;
 }
 
