@@ -20,7 +20,7 @@ function weekStartSH(now = Date.now()) {
   return addDaysSH(-back, Date.UTC(y, m - 1, d, 4, 0, 0));
 }
 function weekKey(now = Date.now()) { return 'W' + weekStartSH(now); }
-function nextStage(stage) { return STAGE_NEXT[stage] || null; }
+function nextStage(stage) { return STAGE_NEXT[normalizeStage(stage)] || null; }
 
 function migrate(run) {
   run(`CREATE TABLE IF NOT EXISTS triage(
@@ -47,7 +47,7 @@ function isPending(o, today) {
   const s = inboxStatusOf(o, today);
   if (s === 'dismissed' || s === 'snoozed' || s === 'saved') return false;
   if (o.inboxStatus === 'snoozed') return true;
-  return (o.stage || 'discover') === 'discover' && !o.stale && !o.quality?.noise;
+  return normalizeStage(o.stage || 'discover') === 'discover' && !o.stale && !o.quality?.noise;
 }
 function groupInbox(opps, today) {
   today = today || todaySH();
@@ -371,7 +371,7 @@ function stageChangedDay(o, now = Date.now()) {
 function pipelineHealth(o = {}, today, opts = {}) {
   today = today || todaySH();
   const stall = Object.assign({}, STALL_DAYS, opts.stallDays || {});
-  const stage = o.stage || 'discover';
+  const stage = normalizeStage(o.stage || 'discover');
   const changed = stageChangedDay(o);
   const ageDays = changed ? daysBetween(changed, today) : null;
   const open = (o.tasks || []).filter(t => !t.done);
@@ -442,9 +442,17 @@ function parseWorkbenchCommand(q, ctx = {}) {
   return items;
 }
 
+
+const STAGE_ALIAS = { deep: 'research', deep_dive: 'research', deeprank: 'research' };
+function normalizeStage(stage) {
+  if (!stage) return 'discover';
+  if (STAGE_ALIAS[stage]) return STAGE_ALIAS[stage];
+  return stage;
+}
+
 module.exports = {
   STAGE_CN, STAGE_NEXT, ACTIVE_STAGES, todaySH, addDaysSH, weekStartSH, weekKey, nextStage, migrate,
   inboxStatusOf, isPending, groupInbox, triagePatch, newTaskId, normalizeTask, taskState, dueTasks,
   csvEscape, escHtml, pipelineRows, pipelineCsv, pipelineHtml, loopBriefSections, signalInbox,
-  ROLE_HOME, resolveHomeView, lastRefreshSummary, emptyStateCopy, taskAlertHits, notifOpenTarget, workspaceDigest, snapshotOppTriage, snapshotSigTriage, undoTriagePatch, makeUndoEntry, batchTriagePlan, inboxKeyAction, STALL_DAYS, daysBetween, stageChangedDay, pipelineHealth, briefOppLink, splitBriefLinks, WB_VIEWS, parseWorkbenchCommand
+  ROLE_HOME, resolveHomeView, lastRefreshSummary, emptyStateCopy, taskAlertHits, notifOpenTarget, workspaceDigest, snapshotOppTriage, snapshotSigTriage, undoTriagePatch, makeUndoEntry, batchTriagePlan, inboxKeyAction, STALL_DAYS, daysBetween, stageChangedDay, pipelineHealth, briefOppLink, splitBriefLinks, WB_VIEWS, parseWorkbenchCommand, STAGE_ALIAS, normalizeStage
 };

@@ -100,12 +100,12 @@ async function recluster() {
   log(`语义聚类：${res.pool} 条信号 → ${res.clusters} 个簇 → ${res.opps.length} 个机会（相似度阈值 ${cfg.clusterSim}，${lastCluster.ms}ms）`);
 }
 function ws(id) { const r = all('SELECT json FROM workspace WHERE opp_id=?', [id])[0]; return r ? JSON.parse(r.json) : {}; }
-function setWs(id, patch) { const cur = ws(id); if (patch.stage && patch.stage !== (cur.stage || 'discover') && patch.stageChangedAt == null) patch = { ...patch, stageChangedAt: Date.now() }; const w = { ...cur, ...patch, updatedAt: Date.now() }; for (const k in patch) if (patch[k] === undefined) delete w[k]; run('INSERT OR REPLACE INTO workspace VALUES(?,?)', [id, JSON.stringify(w)]); save(); return w; }
+function setWs(id, patch) { const cur = ws(id); if (patch.stage) patch = { ...patch, stage: WB.normalizeStage(patch.stage) }; if (patch.stage && patch.stage !== WB.normalizeStage(cur.stage || 'discover') && patch.stageChangedAt == null) patch = { ...patch, stageChangedAt: Date.now() }; const w = { ...cur, ...patch, updatedAt: Date.now() }; for (const k in patch) if (patch[k] === undefined) delete w[k]; run('INSERT OR REPLACE INTO workspace VALUES(?,?)', [id, JSON.stringify(w)]); save(); return w; }
 function merged(o, macro) { const w = ws(o.id); const l = w.llm || {}; const ch = chainLink(o, macro?.chainData);
   const asymmetry = [...(o.asymmetry || []), ...(ch?.chokes || []).slice(0, 2).map(c => ({ key: 'choke', type: '产业链卡脖子', gap: 80, desc: `${ch.name} ${c.node}：${c.why}`, evidence: [{ title: c.node + ' 出口国份额（OEC/USGS）', url: c.url, source: 'chain' }] }))];
   const dims = l.dims || o.dims; const delta = l.dims ? Object.keys(dims).reduce((a, k) => a + dims[k] - o.dims[k], 0) / 6 : 0;
   const ue = { ...o.unitEcon, ...(w.unitEcon || {}) };
-  return { ...o, ...l, dims, unitEcon: ue, statement: l.statement || o.statement, checklist: w.checklist || l.checklist || o.checklist, stage: w.stage || 'discover', stageChangedAt: w.stageChangedAt || null, notes: w.notes || '', watched: !!w.watched, inboxStatus: w.inboxStatus || 'open', snoozeUntil: w.snoozeUntil || '', ruleTotal: o.total, total: Math.round(o.total + delta), comments: w.comments || [], tam: E.tam({ ...o, unitEcon: ue }, macro, w.assump || {}), assump: w.assump || {}, chain: ch, asymmetry }; }
+  return { ...o, ...l, dims, unitEcon: ue, statement: l.statement || o.statement, checklist: w.checklist || l.checklist || o.checklist, stage: WB.normalizeStage(w.stage || 'discover'), stageChangedAt: w.stageChangedAt || null, notes: w.notes || '', watched: !!w.watched, inboxStatus: w.inboxStatus || 'open', snoozeUntil: w.snoozeUntil || '', ruleTotal: o.total, total: Math.round(o.total + delta), comments: w.comments || [], tam: E.tam({ ...o, unitEcon: ue }, macro, w.assump || {}), assump: w.assump || {}, chain: ch, asymmetry }; }
 function chainLink(o, chain) { const c = chainFor(o.industry, chain); if (!c) return null; const chokes = c.nodes.filter(n => n.choke);
   return { code: c.code, name: c.name, nodes: c.nodes, chokes: chokes.map(n => ({ node: n.stage + '·' + n.name, why: n.chokeWhy, growth: n.growth, url: n.url })) }; }
 // v4.1 个性化：Rocchio 式隐式反馈画像（观察/阶段推进为正，放弃为负），在行业与主题词上累积权重
@@ -134,15 +134,15 @@ function getOpps() { const DM = getK('dims')?.oppDims || {}; const macro = { ...
 let LANG = 'zh'; const NT = (zh, en) => LANG === 'en' ? en : zh;
 function checkAlerts() {
   const opps = getOpps(), sigs = all('SELECT * FROM signals WHERE fetched > ?', [Math.floor(Date.now() / 1000) - 3600]);
-  for (const a of all('SELECT * FROM alerts WHERE enabled=1')) { const hits = [];
-    if (a.type === 'score') opps.filter(o => o.total >= +a.value).forEach(o => hits.push([o.id, NT(`高分机会：${o.title}（${o.total}）`, `High-score opportunity: ${o.title} (${o.total})`), o.statement.pain.slice(0, 120)]));
+  for (const a of all('SELECT * FROM alerts WHERE enabled=1')) { const hits = []; try {
+    if (a.type === 'score') opps.filter(o => o.total >= +a.value).forEach(o => hits.push([o.id, NT(`高分机会：${o.title}（${o.total}）`, `High-score opportunity: ${o.title} (${o.total})`), String((o.statement && o.statement.pain) || o.title || '').slice(0, 120)]));
     if (a.type === 'keyword') sigs.filter(s => (s.title + s.text).toLowerCase().includes(a.value.toLowerCase())).forEach(s => hits.push([s.id, NT(`关键词「${a.value}」新信号`, `New signal for keyword "${a.value}"`), s.title]));
     if (a.type === 'funding') sigs.map(E.extractFunding).filter(f => f && f.amountM >= +a.value).forEach(f => hits.push([f.url, NT(`融资 ≥ $${a.value}M：${f.company}`, `Funding ≥ $${a.value}M: ${f.company}`), f.title]));
     if (a.type === 'industry') opps.filter(o => o.industry && o.industry.startsWith(a.value)).forEach(o => hits.push([o.id, NT(`行业 ${a.value} 新机会：${o.title}`, `New in industry ${a.value}: ${o.title}`), o.industryName]));
     if (a.type === 'watch') opps.filter(o => o.watched && o.metrics.last3 > 0).forEach(o => hits.push([o.id + ':' + new Date().toDateString(), NT(`观察中的机会有新动态：${o.title}`, `Watched opportunity updated: ${o.title}`), NT(`近 3 天 ${o.metrics.last3} 条新信号`, `${o.metrics.last3} new signals in 3 days`)]));
     if (a.type === 'task') WB.taskAlertHits(withOppTitles(all('SELECT * FROM tasks')), WB.todaySH()).forEach(h => hits.push([h.ref, NT(h.titleZh, h.titleEn), NT(h.bodyZh, h.bodyEn)]));
     for (const [ref, title, body] of hits) { run('INSERT OR IGNORE INTO notifications(ts,alert_id,ref,title,body) VALUES(?,?,?,?,?)', [Date.now(), a.id, ref, title, body]);
-      if (db.getRowsModified() && Notification.isSupported() && !process.env.SR_SHOT) new Notification({ title: NT('商机雷达 · ', 'Signal Radar · ') + title, body }).show(); } }
+      if (db.getRowsModified() && Notification.isSupported() && !process.env.SR_SHOT) new Notification({ title: NT('商机雷达 · ', 'Signal Radar · ') + title, body }).show(); } } catch (e) { log('提醒规则失败：' + a.type + ' ' + (e.message || e)); } }
 }
 // v4.2 每日简报：快照后自动生成跨来源一页简报（带 [n] 引用），存为 md 并弹系统通知；不外发
 // v4.9「为什么值得看」：不再套用规则模板（如「资本涌入：…」），改为从该机会自身的数据里挑 2–3 个最有区分度的事实，
@@ -282,14 +282,14 @@ function stageGate(o) {
   return { ok: !miss.length, miss, next: WB.nextStage(o.stage) };
 }
 function decisionBrief(o) {
-  const u = ue(o.unitEcon), risk = o.risks.reduce((a, r) => a + r.p * r.i, 0) / (o.risks.length || 1);
+  const u = ue(o.unitEcon), risks = o.risks || [], risk = risks.reduce((a, r) => a + r.p * r.i, 0) / (risks.length || 1);
   const rec = o.total >= 70 && o.conf >= .5 && risk < 10 ? '推进（进入尽调）' : o.total >= 60 ? '观察（补充证据后再议）' : '暂不推进';
   const life = o.ts?.life, mos = o.mosaic, gate = stageGate(o);
   const cites = (o.claims || []).slice(0, 6).map(c => `- **${c.kind}**：${c.text}${c.refs?.length ? ' ' + c.refs.map(n => '[' + n + ']').join('') : '（无出处）'}`).join('\n');
   const ev = (o.evidence || []).slice(0, 12).map(e => `${e.n || ''}. [${e.source}] ${e.title}${e.url ? ' — ' + e.url : ''}`).join('\n');
   return `# 决策一页纸（Decision Brief）\n\n**机会**：${o.title}  \n**行业**：${o.industryName}  \n**阶段**：${o.stage}  \n**日期**：${new Date().toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })}（北京时间）\n\n## 建议\n**${rec}** · 综合 ${o.total}/100 · 置信 ${o.conf}${mos ? ' · 体检分 ' + mos.score : ''}${life ? ' · 生命周期 ' + (life.stage || '') + (life.provisional ? '（初判）' : '') : ''}\n\n## 阶段门\n${gate.ok ? '✅ 可进入下一阶段' + (gate.next ? '（' + gate.next + '）' : '') : '⚠ 未通过：' + gate.miss.join('；')}\n\n## 关键主张（带编号引文）\n${cites || '（无）'}\n\n## 单位经济摘要\n毛利/客户 ${u.ltv?.toFixed?.(0) || u.ltv} · CAC ${u.cac} · 回收期 ${u.payback?.toFixed?.(1) || u.payback} 月\n\n## 证据（前 12）\n${ev}\n\n> 建议由规则引擎生成，需人工判断。体检分权重为本应用假设，非第三方评分。\n`;
 }
-function icMemo(o) { const u = ue(o.unitEcon); const risk = o.risks.reduce((a, r) => a + r.p * r.i, 0) / o.risks.length;
+function icMemo(o) { const u = ue(o.unitEcon); const risks = o.risks || []; const risk = risks.reduce((a, r) => a + r.p * r.i, 0) / (risks.length || 1);
   const rec = o.total >= 70 && o.conf >= .5 && risk < 10 ? '推进（进入尽调）' : o.total >= 60 ? '观察（补充证据后再议）' : '暂不推进';
   return `# 投资委员会备忘录（IC Memo）\n\n**项目/机会**：${o.title}  \n**行业**：${o.industryName}（GICS ${o.industry || '—'}，${o.sector}）  \n**日期**：${new Date().toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })}（北京时间）  \n**建议**：**${rec}**  \n**综合评分**：${o.total}/100，置信度 ${o.conf}${o.mosaic ? '  \n**体检分**：' + o.mosaic.score + '/1000（动能 ' + o.mosaic.parts.momentum + ' / 市场 ' + o.mosaic.parts.market + ' / 资金 ' + o.mosaic.parts.money + ' / 人才 ' + o.mosaic.parts.talent + '）' : ''}${o.ts?.life ? '  \n**生命周期**：' + o.ts.life.stage + (o.ts.life.provisional ? '（初判）' : '') : ''}，平均风险分 ${risk.toFixed(1)}/25\n\n> 本备忘录由商机雷达根据公开信号自动生成。所有数字要么附带来源链接，要么明确标注为"假设"，未经一手尽调核实。\n\n## 1. 投资要点\n- 机会：面向 ${o.statement.who}，${o.statement.pain}\n- Why now：${o.statement.whyNow}\n- 切入：${o.statement.how}\n- 不对称：${o.asymmetry.map(a => a.desc).join('；') || '无显著不对称'}\n\n## 2. 市场\n自上而下 TAM ${$M(o.tam.topDown.tam)}；自下而上 TAM ${$M(o.tam.bottomUp.tam)}；SAM ${$M(o.tam.sam)}；SOM ${$M(o.tam.som)}。${o.tam.note}\n\n## 3. 竞争\n${o.competitors.slice(0, 8).map(c => `- ${c.name}（${c.types.join('/')}${c.fundingM ? '，披露融资 $' + c.fundingM + 'M' : ''}）${c.evidence[0] ? ' ' + link(c.evidence[0]) : ''}`).join('\n') || '- 未从信号中发现明确竞品（需人工补充）'}\n\n## 4. 单位经济（假设）\nLTV $${Math.round(u.ltv).toLocaleString()}，LTV/CAC ${u.ratio.toFixed(1)}，CAC 回收期 ${u.payback.toFixed(1)} 个月（${o.unitEcon.label} 行业经验假设）。\n\n## 5. 护城河\n${o.moat.sort((a, b) => b.score - a.score).map(m => `${m.name} ${m.score}`).join(' · ')}\n\n## 6. 主要风险\n${o.risks.sort((a, b) => b.p * b.i - a.p * a.i).map(r => `- ${r.name}（P${r.p}×I${r.i}）：${r.why}`).join('\n')}\n\n## 7. 反方观点\n${o.redteam.map(r => '- ' + r).join('\n')}\n\n## 8. 尽调与验证计划\n${o.checklist.map((c, i) => `${i + 1}. ${c.step}：${c.detail}（标准：${c.metric}）`).join('\n')}\n\n---\n\n# 附录：完整分析\n\n` + oppMd(o); }
 function reportMd(ids) { const opps = getOpps().filter(o => !ids || ids.includes(o.id));
@@ -416,7 +416,7 @@ const H = {
   'lang:set': (_, l) => { LANG = l === 'en' ? 'en' : 'zh'; setK('lang', LANG); return LANG; },
   'opp:digest': (_, id) => { const o = getOpps().find(x => x.id === id); return WB.workspaceDigest(o || {}, { papers: paperStats(), macro: getK('macro'), istats: getK('istats') }); },
   'stage:gate': (_, id) => stageGate(getOpps().find(x => x.id === id) || {}),
-  'memo:save': (_, { id, fmt }) => { const o = getOpps().find(x => x.id === id); return saveDoc(icMemo(o), 'IC-Memo-' + o.title.replace(/[^\w\u4e00-\u9fa5]+/g, '_').slice(0, 30), fmt); },
+  'memo:save': (_, { id, fmt }) => { const o = getOpps().find(x => x.id === id); if (!o) throw new Error('未找到该机会'); return saveDoc(icMemo(o), 'IC-Memo-' + o.title.replace(/[^\w\u4e00-\u9fa5]+/g, '_').slice(0, 30), fmt); },
   'share:export': async () => { const r = await dialog.showSaveDialog(win, { defaultPath: `商机雷达-共享-${new Date().toISOString().slice(0, 10)}.json` }); if (r.canceled) return null;
     const cfg = getCfg(); const data = { app: 'signal-radar', version: 3, from: cfg.userName || 'anonymous', exportedAt: new Date().toISOString(), workspace: all('SELECT * FROM workspace').map(w => ({ id: w.opp_id, ...JSON.parse(w.json) })), opps: all('SELECT json FROM opps').map(r => JSON.parse(r.json)), alerts: all('SELECT type,value FROM alerts'), tasks: all('SELECT * FROM tasks'), triage: all('SELECT * FROM triage') };
     for (const w of data.workspace) if (!w.snapshot) w.snapshot = data.opps.find(o => o.id === w.id);

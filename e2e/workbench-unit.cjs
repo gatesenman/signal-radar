@@ -317,6 +317,19 @@ t('命令面板：任务、分拣、工作台视图均可解析，无机会时�
   assert.deepStrictEqual(WB.parseWorkbenchCommand('   ', { opps }), []);
 });
 
+
+t('阶段别名 deep 归一为 research，下一步为验证；未知阶段不乱改', () => {
+  assert.strictEqual(WB.normalizeStage('deep'), 'research');
+  assert.strictEqual(WB.normalizeStage('deep_dive'), 'research');
+  assert.strictEqual(WB.normalizeStage(''), 'discover');
+  assert.strictEqual(WB.normalizeStage('validate'), 'validate');
+  assert.strictEqual(WB.normalizeStage('weird'), 'weird');
+  assert.strictEqual(WB.nextStage('deep'), 'validate');
+  assert.strictEqual(WB.nextStage('research'), 'validate');
+  const h = WB.pipelineHealth({ stage: 'deep', tasks: [{ title: 'x', due: '2026-12-01', done: 0 }], stageChangedAt: Date.parse('2026-11-20T00:00:00+08:00') }, '2026-11-23');
+  assert.strictEqual(h.stage, 'research');
+});
+
 const pass = results.filter(r => r.ok).length;
 console.log(`\n${pass}/${results.length} passed`);
 process.exit(pass === results.length ? 0 : 1);
