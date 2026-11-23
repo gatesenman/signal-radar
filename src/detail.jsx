@@ -1,4 +1,4 @@
-import { React, useState, api, I, D, C, KIND, STAGES, fmt, $M, Src, L, Bar, Conf, Life, Ev, Cite, PH, Chart, radarOpt, grid, axl, Empty } from './ui.jsx';
+import { React, useState, useEffect, api, I, D, C, KIND, STAGES, fmt, $M, Src, L, Bar, Conf, Life, Ev, Cite, PH, Chart, radarOpt, grid, axl, Empty } from './ui.jsx';
 import { OppHistory } from './views4.jsx';
 export function Detail({ cur, allOpps, upd, load, say, llmOn, setSel, tab, setTab, setView }) {
   const [ld, setLd] = useState(false);
@@ -19,9 +19,10 @@ export function Detail({ cur, allOpps, upd, load, say, llmOn, setSel, tab, setTa
 }
 
 function DWork({ o, upd, say, load, setView }) {
-  const [note, setNote] = useState(o.notes || ''), [title, setTitle] = useState(''), [due, setDue] = useState('');
+  const [note, setNote] = useState(o.notes || ''), [title, setTitle] = useState(''), [due, setDue] = useState(''), [digest, setDigest] = useState(null);
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
   const tasks = o.tasks || [];
+  useEffect(() => { let live = true; api.call('opp:digest', o.id).then(d => { if (live) setDigest(d); }).catch(() => { if (live) setDigest(null); }); return () => { live = false; }; }, [o.id, o.industry, o.stage, tasks.length]);
   const add = async () => { if (!title.trim()) return say('请填写任务标题'); await api.call('tasks:add', { opp_id: o.id, title: title.trim(), due }); setTitle(''); setDue(''); await load?.(); say('已添加跟进任务'); };
   const tog = async t => { await api.call('tasks:update', { id: t.id, done: t.done ? 0 : 1 }); await load?.(); };
   const del = async t => { await api.call('tasks:remove', t.id); await load?.(); say('已删除任务'); };
@@ -50,14 +51,11 @@ function DWork({ o, upd, say, load, setView }) {
       </div>
     </div>
     <div>
-      <div className="card"><h3><span><I n="git-branch-line" /> 产业链与卡脖子</span>{setView && <button className="s" onClick={() => setView('chain')}>打开产业链</button>}</h3>
-        {o.chain ? <><div className="mut" style={{ marginBottom: 6 }}>{o.chain.name}</div>
-          {(o.chain.chokes || []).length ? o.chain.chokes.map((c, i) => <div key={i} style={{ fontSize: 12, marginBottom: 4 }}><span className="tag o">卡脖子</span> {c.node}：{c.why}</div>) : <div className="mut">该产业链暂无被标记为卡脖子的节点。</div>}</> :
-          <div className="mut">这条机会还没有匹配到产业链卡片。可到「产业链」页查看全部链路。</div>}
-      </div>
-      <div className="card" style={{ marginTop: 12 }}><h3><span><I n="book-open-line" /> 论文与行业统计</span>{setView && <button className="s" onClick={() => setView('research')}>打开论文与统计</button>}</h3>
-        <div className="mut">行业：{o.industryName || '未分类'}{o.sector ? ' · ' + o.sector : ''}。详细论文增速、转化落差和宏观贸易数据在对应研究页，这里只做入口，避免把工作区做成第二份研究报告。</div>
-        {setView && <div className="row" style={{ marginTop: 8, gap: 6 }}><button className="s" onClick={() => setView('macro')}><I n="global-line" />宏观与贸易</button><button className="s" onClick={() => setView('funding')}><I n="money-dollar-circle-line" />资本与融资</button><button className="s" onClick={() => setView('radar')}>机会雷达</button></div>}
+      <div className="card"><h3><span><I n="git-branch-line" /> 研判摘要</span><span className="mut">库内已有数据，不是另一份研究报告</span></h3>
+        {digest?.nextHint && <div className="wb-hint"><I n="lightbulb-line" /> {digest.nextHint}</div>}
+        {(digest?.bullets || []).map((b, i) => <div key={i} className="wb-digest" onClick={() => b.go && setView?.(b.go)}>{b.kind === 'choke' ? <span className="tag o">卡脖子</span> : b.kind === 'papers' ? <span className="tag n">论文</span> : b.kind === 'macro' ? <span className="tag n">宏观</span> : b.kind === 'istats' ? <span className="tag n">统计</span> : <span className="tag">产业链</span>} {b.text}</div>)}
+        {!digest && <div className="mut">正在读取本机产业链、论文与宏观摘要…</div>}
+        {setView && <div className="row" style={{ marginTop: 8, gap: 6 }}><button className="s" onClick={() => setView('chain')}><I n="git-branch-line" />产业链</button><button className="s" onClick={() => setView('research')}><I n="book-open-line" />论文与统计</button><button className="s" onClick={() => setView('macro')}><I n="global-line" />宏观与贸易</button><button className="s" onClick={() => setView('funding')}><I n="money-dollar-circle-line" />资本与融资</button></div>}
       </div>
       <div className="card" style={{ marginTop: 12 }}><h3><span><I n="links-line" /> 最新证据</span></h3>
         {(o.evidence || []).slice(0, 8).map((e, i) => <div key={i} style={{ fontSize: 12, marginBottom: 4 }}><span className="tag n">{e.source}</span> <L u={e.url}>{String(e.title).slice(0, 90)}</L></div>)}

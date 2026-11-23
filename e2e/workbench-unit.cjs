@@ -181,6 +181,30 @@ t('提醒点击目标：任务通知回到机会，普通机会 id 仍可用，�
   assert.strictEqual(WB.notifOpenTarget(''), null);
 });
 
+
+t('工作区摘要：卡脖子、论文样本不足、宏观在库与下一步提示都来自传入数据', () => {
+  const d = WB.workspaceDigest({
+    id: 'o_1', title: '冷链专线', industry: '2030', industryName: '公路运输', stage: 'research',
+    chain: { name: '物流与货运', chokes: [{ node: '上游·船用燃料', why: '单一国家份额 62%' }] },
+    tasks: []
+  }, {
+    papers: [{ code: '2030', cn: '公路运输', papers: 4, r14: 2, r28: 1, lowSample: true, growth: null, gap: 1.2, citAccel: null }],
+    macro: { ts: 1, wb: { gdp: 1, pop: 1 }, imf: {}, fred: { dgs10: 1 }, comtrade: { rows: [1, 2, 3] } },
+    istats: { ok: true }
+  }, '2026-11-23');
+  assert.ok(d.nextHint.includes('跟进任务'));
+  assert.ok(d.bullets.some(b => b.kind === 'choke' && b.text.includes('船用燃料') && b.text.includes('62%')));
+  assert.ok(d.bullets.some(b => b.kind === 'papers' && b.text.includes('样本不足') && b.text.includes('落差 1.2')));
+  assert.ok(d.bullets.some(b => b.kind === 'macro' && b.text.includes('世界银行 2 项') && b.text.includes('Comtrade 3 章')));
+  assert.ok(d.macroReady);
+  const empty = WB.workspaceDigest({ stage: 'discover' }, {}, '2026-11-23');
+  assert.ok(empty.nextHint.includes('发现'));
+  assert.ok(empty.bullets.some(b => b.text.includes('尚未匹配到产业链')));
+  assert.ok(empty.bullets.some(b => b.text.includes('尚未拉取宏观')));
+  const due = WB.workspaceDigest({ stage: 'screen', tasks: [{ title: '要报价', due: '2026-11-20', done: 0 }] }, {}, '2026-11-23');
+  assert.ok(due.nextHint.includes('逾期') && due.nextHint.includes('要报价'));
+});
+
 const pass = results.filter(r => r.ok).length;
 console.log(`\n${pass}/${results.length} passed`);
 process.exit(pass === results.length ? 0 : 1);

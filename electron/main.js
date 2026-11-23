@@ -379,6 +379,7 @@ const H = {
     fs.writeFileSync(r.filePath, fmt === 'html' ? WB.pipelineHtml(opps, tasks, { day }) : WB.pipelineCsv(opps, tasks)); return r.filePath;
   },
   'lang:set': (_, l) => { LANG = l === 'en' ? 'en' : 'zh'; setK('lang', LANG); return LANG; },
+  'opp:digest': (_, id) => { const o = getOpps().find(x => x.id === id); return WB.workspaceDigest(o || {}, { papers: paperStats(), macro: getK('macro'), istats: getK('istats') }); },
   'stage:gate': (_, id) => stageGate(getOpps().find(x => x.id === id) || {}),
   'memo:save': (_, { id, fmt }) => { const o = getOpps().find(x => x.id === id); return saveDoc(icMemo(o), 'IC-Memo-' + o.title.replace(/[^\w\u4e00-\u9fa5]+/g, '_').slice(0, 30), fmt); },
   'share:export': async () => { const r = await dialog.showSaveDialog(win, { defaultPath: `商机雷达-共享-${new Date().toISOString().slice(0, 10)}.json` }); if (r.canceled) return null;

@@ -99,3 +99,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}th.num{padding-
 .empty.err-empty{border-color:var(--danger, #b42318);color:var(--tx)}
 .empty-errors{margin:10px 0 0;padding-left:1.2em;text-align:left;font-size:12px;color:var(--mut);max-width:560px}
 .empty-errors code{margin-right:6px;color:var(--tx)}
+
+.wb-hint{font-size:13px;margin:0 0 8px;padding:8px 10px;background:var(--panel2);border-radius:6px}
+.wb-digest{font-size:12px;line-height:1.45;margin:0 0 6px;cursor:pointer}
+.wb-digest:hover{color:var(--tx-strong)}

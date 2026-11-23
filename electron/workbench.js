@@ -254,9 +254,52 @@ function notifOpenTarget(ref) {
   return null;
 }
 
+
+function workspaceDigest(o = {}, ctx = {}, today) {
+  today = today || todaySH();
+  const bullets = [];
+  const chokes = (o.chain && o.chain.chokes) || [];
+  if (o.chain && o.chain.name) {
+    if (chokes.length) chokes.slice(0, 3).forEach(c => bullets.push({ kind: 'choke', text: `${o.chain.name}卡脖子：${c.node}${c.why ? '。' + c.why : ''}`, go: 'chain' }));
+    else bullets.push({ kind: 'chain', text: `已匹配产业链「${o.chain.name}」，暂无被标记为卡脖子的节点。`, go: 'chain' });
+  } else {
+    bullets.push({ kind: 'chain', text: '尚未匹配到产业链卡片，不能从本条记录判断卡脖子环节。', go: 'chain' });
+  }
+  const code = o.industry || '';
+  const papers = (ctx.papers || []).find(p => p && (p.code === code || (code && p.code && (p.code === code || (code.length >= 4 && p.code.startsWith(code.slice(0, 4)))))));
+  if (papers) {
+    const bits = [];
+    if (papers.papers) bits.push('近窗论文 ' + papers.papers + ' 篇');
+    if (papers.growth != null) bits.push('近 14 天相对前 14 天增速 ' + papers.growth + '%');
+    else if (papers.lowSample) bits.push('论文增速样本不足，不作趋势判断');
+    if (papers.gap != null) bits.push('论文→产品转化落差 ' + papers.gap + (papers.gap >= 1 ? '（研究多于产品化，可能有空档）' : ''));
+    if (papers.citAccel != null) bits.push('引用速度差 ' + papers.citAccel);
+    bullets.push({ kind: 'papers', text: (o.industryName || papers.cn || '本行业') + '：' + (bits.join('；') || '暂无足够论文统计'), go: 'research' });
+  } else {
+    bullets.push({ kind: 'papers', text: '本行业还没有论文统计（可能尚未采集研究类信号，或未分类）。', go: 'research' });
+  }
+  const macro = ctx.macro || {};
+  const macroBits = [];
+  if (macro.wb && Object.keys(macro.wb).length) macroBits.push('世界银行 ' + Object.keys(macro.wb).length + ' 项');
+  if (macro.imf && Object.keys(macro.imf).length) macroBits.push('IMF ' + Object.keys(macro.imf).length + ' 项');
+  if (macro.fred && Object.keys(macro.fred).length) macroBits.push('FRED ' + Object.keys(macro.fred).length + ' 项');
+  if (macro.comtrade && macro.comtrade.rows) macroBits.push('Comtrade ' + macro.comtrade.rows.length + ' 章');
+  if (macro.ts) bullets.push({ kind: 'macro', text: macroBits.length ? ('宏观数据已在库：' + macroBits.join('，') + '。详情在「宏观与贸易」，此处不复制图表。') : '宏观数据对象存在但还没有可用系列。', go: 'macro' });
+  else bullets.push({ kind: 'macro', text: '尚未拉取宏观数据。可到「宏观与贸易」页刷新（需联网）。', go: 'macro' });
+  if (ctx.istats) bullets.push({ kind: 'istats', text: '行业统计已在库，可用于自上而下 TAM。完整表在「论文与统计」。', go: 'research' });
+  const tasks = o.tasks || [];
+  const due = dueTasks(tasks, today);
+  let nextHint;
+  if (due.length) nextHint = '优先处理' + (due[0].due < today ? '逾期' : '今日到期') + '任务「' + due[0].title + '」。';
+  else if (!(tasks.filter(t => !t.done).length) && ACTIVE_STAGES.includes(o.stage || '')) nextHint = '管道中的机会还没有带到期日的跟进任务，建议写下一件要做的事。';
+  else if ((o.stage || 'discover') === 'discover') nextHint = '仍在「发现」阶段。若值得跟进，在收件箱收录到初筛。';
+  else nextHint = '暂无到期任务，可继续补充证据或推进阶段门。';
+  return { chokes: chokes.slice(0, 4), papers: papers || null, macroReady: !!(macro && macro.ts), nextHint, bullets };
+}
+
 module.exports = {
   STAGE_CN, STAGE_NEXT, ACTIVE_STAGES, todaySH, addDaysSH, weekStartSH, weekKey, nextStage, migrate,
   inboxStatusOf, isPending, groupInbox, triagePatch, newTaskId, normalizeTask, taskState, dueTasks,
   csvEscape, escHtml, pipelineRows, pipelineCsv, pipelineHtml, loopBriefSections, signalInbox,
-  ROLE_HOME, resolveHomeView, lastRefreshSummary, emptyStateCopy, taskAlertHits, notifOpenTarget
+  ROLE_HOME, resolveHomeView, lastRefreshSummary, emptyStateCopy, taskAlertHits, notifOpenTarget, workspaceDigest
 };
