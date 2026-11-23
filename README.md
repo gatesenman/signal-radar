@@ -2,15 +2,10 @@
 
 AI 创业机会发现桌面应用：从 80+ 个全球公开数据源采集信号，在本机做语义聚类和可解释评分，输出机会陈述、TAM/SAM/SOM、竞争格局、Why Now、产业链卡脖子分析和投委会备忘录。所有结论都附来源链接，假设会明确标注。
 
-## Windows 安装
-1. 下载 `SignalRadar-Setup-6.0.0-x64.exe`（安装版）或 `SignalRadar-6.0.0-win.zip`（免安装，解压后运行 `SignalRadar.exe`）。
-2. **安装包未做代码签名**，Windows SmartScreen 会提示"Windows 已保护你的电脑"：点击 **更多信息 → 仍要运行**。部分杀毒软件可能需要手动放行。
-3. 安装向导可以选择安装目录。数据保存在 `%APPDATA%\signal-radar`（SQLite 数据库、CC-NEWS 缓存）。
-4. 系统要求：Windows 10/11 x64，内存 4GB 以上，磁盘 1GB 以上。语义嵌入模型已内置（离线可用，约 130MB），首次采集需要联网。
+## 运行说明
+本仓库提供源码，不包含安装包。6.0 是端到端工作台：侧栏「工作循环」按 工作台 → 收件箱 → 机会工作区 → 管道 → 工作简报 走完发现、分拣、调研、跟进和导出。详见 `NOTES-6.0.md`。
 
-Linux：`SignalRadar-6.0.0.AppImage`，执行 `chmod +x` 后直接运行。
-
-6.0 是端到端工作台：侧栏「工作循环」按 工作台 → 收件箱 → 机会工作区 → 管道 → 工作简报 走完发现、分拣、调研、跟进和导出。详见 `NOTES-6.0.md`。
+自行构建的安装包未做代码签名，Windows SmartScreen 可能提示“Windows 已保护你的电脑”，可点击 **更多信息 → 仍要运行**。数据保存在 Windows 的 `%APPDATA%\signal-radar`（SQLite 数据库、CC-NEWS 缓存）。系统要求：Windows 10/11 x64，内存 4GB 以上，磁盘 1GB 以上。语义嵌入模型需放在 `models/`（离线可用，约 130MB），首次采集需要联网。
 
 ## 界面
 - 桌面软件风格：自绘标题栏（最小化/最大化/关闭）、菜单栏（文件/视图/分析/工具/帮助）、工具栏（采集、聚类、行业筛选、报告、IC 备忘录）、可折叠侧边栏、状态栏、右键菜单。
@@ -52,3 +47,10 @@ npx electron-builder --linux AppImage
 - 打 Windows 包前需要准备 Windows 版 sharp：`npm pack @img/sharp-win32-x64@0.35.5`，解压到 `node_modules/@img/sharp-win32-x64`。
 - 嵌入模型放在 `models/`（通过 extraResources 打包）。Windows 包已剔除 CUDA、linux/darwin、arm64 二进制。
 - sql.js 是 WASM，没有原生模块；不使用 better-sqlite3。
+
+## 贡献
+欢迎通过 Issue 和 Pull Request 参与，详见 [CONTRIBUTING.md](CONTRIBUTING.md)。安全问题请按 [SECURITY.md](SECURITY.md) 私下报告。参与时请遵守 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
+
+## 许可证
+本仓库尚未附带 LICENSE 文件，许可证未指定。
+

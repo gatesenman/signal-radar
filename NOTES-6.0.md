@@ -38,7 +38,7 @@
 - `e2e/workbench-unit.cjs`、`e2e/run.cjs`（新增 32–36）
 - `package.json` 版本 6.0.0
 
-未上传 GitHub，仓库内不含密钥。
+已更新到已有公开仓库 https://github.com/gatesenman/signal-radar ，仓库内不含密钥。
 
 ## 如何运行 / 构建
 
