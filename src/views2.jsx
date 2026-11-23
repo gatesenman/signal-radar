@@ -90,9 +90,9 @@ export function Report({ cur, say }) {
     {!cur ? <Empty text="在机会雷达中选择一个机会" /> : <div className="card"><pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'Noto Sans CJK SC, sans-serif', lineHeight: 1.7, fontSize: 13 }}>{md}</pre></div>}</>;
 }
 export function Share({ load, say }) {
-  return <><PH icon="team-line" title="共享协作" sub="导出/导入机会 JSON 包（含备注与评论）" />
-    <div className="grid g2"><div className="card"><h3><I n="upload-2-line" /> 导出共享包</h3><p className="mut">把当前机会库（含备注、评论、阶段）导出为 JSON，发给同事。</p><button onClick={async () => { const p = await api.call('share:export'); p && say('已导出：' + p); }}><I n="download-line" />导出</button></div>
-      <div className="card"><h3><I n="download-2-line" /> 导入共享包</h3><p className="mut">合并他人导出的机会；同 id 以较新为准。</p><button onClick={async () => { const r = await api.call('share:import'); r && (await load(), say(`已从 ${r.from} 导入 ${r.count} 个`)); }}><I n="upload-line" />导入</button></div></div></>;
+  return <><PH icon="team-line" title="共享协作" sub="导出/导入机会 JSON 包（v3：含备注、评论、阶段、任务与分拣）。导入时较新的记录覆盖较旧的；本机更新时间更新或对方缺少时间戳时保留本机，避免静默丢失。" />
+    <div className="grid g2"><div className="card"><h3><I n="upload-2-line" /> 导出共享包</h3><p className="mut">把当前机会库（含备注、评论、阶段、跟进任务和分拣状态）导出为 JSON，发给同事。只在本机读写文件，不会自动外发。</p><button onClick={async () => { const p = await api.call('share:export'); p && say('已导出：' + p); }}><I n="download-line" />导出</button></div>
+      <div className="card"><h3><I n="download-2-line" /> 导入共享包</h3><p className="mut">合并他人导出的机会、任务和分拣。同 id 以 updated 较新为准；本机更新、或对方记录没有时间戳时保留本机，不会静默覆盖。</p><button onClick={async () => { const r = await api.call('share:import'); if (r) { await load(); const ts = r.tasks ? `，任务写入 ${r.tasks.imported}、保留本机 ${r.tasks.kept}、跳过 ${r.tasks.skipped}` : ''; const tr = r.triage ? `，分拣写入 ${r.triage.imported}、保留本机 ${r.triage.kept}、跳过 ${r.triage.skipped}` : ''; say(`已从 ${r.from} 导入工作区 ${r.count} 个` + ts + tr); } }}><I n="upload-line" />导入</button></div></div></>;
 }
 export function Logs() {
   const [rows, setRows] = useState([]);

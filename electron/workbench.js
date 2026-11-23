@@ -450,9 +450,88 @@ function normalizeStage(stage) {
   return stage;
 }
 
+
+function opportunityOnePager(o = {}, { tasks, digest, today } = {}) {
+  today = today || todaySH();
+  const st = o.statement || {};
+  const stage = normalizeStage(o.stage || 'discover');
+  const h = pipelineHealth(o, today);
+  const list = tasks || o.tasks || [];
+  const open = list.filter(x => !x.done);
+  const L = [];
+  L.push('# ' + (o.title || '未命名机会'));
+  L.push('');
+  L.push(`> 本机一页纸 · ${today}（北京时间） · 阶段 ${STAGE_CN[stage] || stage} · 综合分 ${o.total ?? '—'} · 置信度 ${o.conf ?? '—'}${o.industryName ? ' · ' + o.industryName : ''}`);
+  L.push('');
+  L.push('## 机会陈述');
+  L.push(`- 谁：${st.who || '—'}`);
+  L.push(`- 痛点：${st.pain || '—'}`);
+  L.push(`- 为什么是现在：${st.whyNow || '—'}`);
+  L.push(`- 怎么做：${st.how || '—'}`);
+  L.push('');
+  L.push('## 下一步');
+  if (digest && digest.nextHint) L.push('- ' + digest.nextHint);
+  if (h.hint) L.push('- ' + h.hint);
+  if (open.length) open.slice(0, 12).forEach(x => L.push(`- [${x.done ? 'x' : ' '}] ${x.title}${x.due ? '（到期 ' + x.due + '）' : ''}`));
+  else if (!digest) L.push('- 还没有带到期日的跟进任务。');
+  L.push('');
+  L.push('## 研判要点（库内已有数据）');
+  const bullets = (digest && digest.bullets) || [];
+  if (bullets.length) bullets.forEach(b => L.push('- ' + b.text));
+  else L.push('- 打开工作区可生成研判摘要。此处不编造论文或宏观数字。');
+  if (o.notes) { L.push(''); L.push('## 备注'); L.push(String(o.notes).slice(0, 2000)); }
+  const ev = (o.evidence || []).slice(0, 8);
+  if (ev.length) {
+    L.push(''); L.push('## 证据（节选）');
+    ev.forEach(e => L.push(`- ${e.source || ''} ${e.title || e.url || ''}${e.url ? ' ' + e.url : ''}`));
+  }
+  L.push('');
+  L.push('---');
+  L.push('本页由本机数据生成，不会外发。评分、市场规模中的假设需人工复核。');
+  return L.join('\n');
+}
+function onePagerHtml(md, meta = {}) {
+  const body = String(md || '').split('\n').map(line => {
+    if (line.startsWith('# ')) return '<h1>' + escHtml(line.slice(2)) + '</h1>';
+    if (line.startsWith('## ')) return '<h2>' + escHtml(line.slice(3)) + '</h2>';
+    if (line.startsWith('> ')) return '<p class="mut">' + escHtml(line.slice(2)) + '</p>';
+    if (line === '---') return '<hr/>';
+    if (line.startsWith('- ')) return '<li>' + escHtml(line.slice(2)) + '</li>';
+    if (!line.trim()) return '';
+    return '<p>' + escHtml(line) + '</p>';
+  }).join('\n');
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>${escHtml(meta.title || '机会一页纸')}</title>
+<style>body{font:14px/1.55 "Noto Sans CJK SC","PingFang SC",sans-serif;color:#111;margin:24px;max-width:800px}h1{font-size:22px}h2{font-size:16px;margin-top:1.2em}li{margin-left:1.2em}.mut{color:#555}@media print{button{display:none}}</style>
+</head><body><button onclick="print()">打印</button>\n${body}\n<p class="mut">生成于 ${escHtml(meta.day || todaySH())}（北京时间）</p></body></html>`;
+}
+function pickNewerRecord(local, incoming, required = []) {
+  if (!incoming) return { take: 'skip', reason: 'invalid' };
+  if (required.some(k => !incoming[k])) return { take: 'skip', reason: 'invalid' };
+  if (!local) return { take: 'incoming', reason: 'new' };
+  const lu = Number(local.updated || 0), iu = Number(incoming.updated || 0);
+  if (iu === 0 && lu > 0) return { take: 'local', reason: 'incoming-unversioned' };
+  if (lu > iu) return { take: 'local', reason: 'local-newer' };
+  if (iu > lu) return { take: 'incoming', reason: 'incoming-newer' };
+  return { take: 'local', reason: 'tie-keep-local' };
+}
+function mergeShareSide(localRows, incomingRows, { required, normalize } = {}) {
+  const byId = Object.fromEntries((localRows || []).filter(x => x && x.id).map(x => [x.id, x]));
+  const report = { imported: 0, skipped: 0, kept: 0 };
+  const out = { ...byId };
+  for (const row of incomingRows || []) {
+    const dec = pickNewerRecord(byId[row && row.id], row, required || ['id']);
+    if (dec.take === 'skip') { report.skipped++; continue; }
+    if (dec.take === 'local') { report.kept++; continue; }
+    const nrm = normalize ? normalize(row) : row;
+    out[nrm.id] = nrm;
+    report.imported++;
+  }
+  return { rows: Object.values(out), report };
+}
+
 module.exports = {
   STAGE_CN, STAGE_NEXT, ACTIVE_STAGES, todaySH, addDaysSH, weekStartSH, weekKey, nextStage, migrate,
   inboxStatusOf, isPending, groupInbox, triagePatch, newTaskId, normalizeTask, taskState, dueTasks,
   csvEscape, escHtml, pipelineRows, pipelineCsv, pipelineHtml, loopBriefSections, signalInbox,
-  ROLE_HOME, resolveHomeView, lastRefreshSummary, emptyStateCopy, taskAlertHits, notifOpenTarget, workspaceDigest, snapshotOppTriage, snapshotSigTriage, undoTriagePatch, makeUndoEntry, batchTriagePlan, inboxKeyAction, STALL_DAYS, daysBetween, stageChangedDay, pipelineHealth, briefOppLink, splitBriefLinks, WB_VIEWS, parseWorkbenchCommand, STAGE_ALIAS, normalizeStage
+  ROLE_HOME, resolveHomeView, lastRefreshSummary, emptyStateCopy, taskAlertHits, notifOpenTarget, workspaceDigest, snapshotOppTriage, snapshotSigTriage, undoTriagePatch, makeUndoEntry, batchTriagePlan, inboxKeyAction, STALL_DAYS, daysBetween, stageChangedDay, pipelineHealth, briefOppLink, splitBriefLinks, WB_VIEWS, parseWorkbenchCommand, STAGE_ALIAS, normalizeStage, opportunityOnePager, onePagerHtml, pickNewerRecord, mergeShareSide
 };

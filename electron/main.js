@@ -415,6 +415,14 @@ const H = {
   },
   'lang:set': (_, l) => { LANG = l === 'en' ? 'en' : 'zh'; setK('lang', LANG); return LANG; },
   'opp:digest': (_, id) => { const o = getOpps().find(x => x.id === id); return WB.workspaceDigest(o || {}, { papers: paperStats(), macro: getK('macro'), istats: getK('istats') }); },
+  'opp:onepager': async (_, { id, fmt } = {}) => {
+    const o = getOpps().find(x => x.id === id); if (!o) throw new Error('未找到该机会');
+    const digest = WB.workspaceDigest(o, { papers: paperStats(), macro: getK('macro'), istats: getK('istats') });
+    const md = WB.opportunityOnePager(o, { digest });
+    if (fmt === 'preview') return { md, title: o.title };
+    if (fmt === 'preview-html') return { md, html: WB.onePagerHtml(md, { title: o.title, day: WB.todaySH() }), title: o.title };
+    return saveDoc(md, 'OnePager-' + o.title.replace(/[^\w\u4e00-\u9fa5]+/g, '_').slice(0, 30), fmt === 'html' || fmt === 'pdf' ? fmt : 'md');
+  },
   'stage:gate': (_, id) => stageGate(getOpps().find(x => x.id === id) || {}),
   'memo:save': (_, { id, fmt }) => { const o = getOpps().find(x => x.id === id); if (!o) throw new Error('未找到该机会'); return saveDoc(icMemo(o), 'IC-Memo-' + o.title.replace(/[^\w\u4e00-\u9fa5]+/g, '_').slice(0, 30), fmt); },
   'share:export': async () => { const r = await dialog.showSaveDialog(win, { defaultPath: `商机雷达-共享-${new Date().toISOString().slice(0, 10)}.json` }); if (r.canceled) return null;
@@ -426,9 +434,23 @@ const H = {
     for (const w of d.workspace || []) { const { id, ...rest } = w; const cur = ws(id); const comments = [...(cur.comments || []), ...(rest.comments || []).filter(c => !(cur.comments || []).some(x => x.ts === c.ts && x.by === c.by))];
       const notes = cur.notes && rest.notes && cur.notes !== rest.notes ? cur.notes + `\n\n— 来自 ${d.from} —\n` + rest.notes : (cur.notes || rest.notes || '');
       run('INSERT OR REPLACE INTO workspace VALUES(?,?)', [id, JSON.stringify({ ...rest, ...cur, snapshot: cur.snapshot || rest.snapshot, comments, notes, stage: cur.stage || rest.stage, watched: true, importedFrom: d.from })]); n++; }
-    for (const t of d.tasks || []) { if (!t.id || !t.opp_id || !t.title) continue; const cur = all('SELECT * FROM tasks WHERE id=?', [t.id])[0]; if (cur && cur.updated && t.updated && cur.updated > t.updated) continue; const nrm = WB.normalizeTask({ ...t, created: t.created || Date.now(), updated: t.updated || Date.now() }); run('INSERT OR REPLACE INTO tasks VALUES(?,?,?,?,?,?,?,?)', [nrm.id, nrm.opp_id, nrm.title, nrm.due, nrm.done, nrm.note, nrm.created, nrm.updated]); }
-    for (const x of d.triage || []) { if (!x.id) continue; run('INSERT OR REPLACE INTO triage VALUES(?,?,?,?,?,?)', [x.id, x.kind || 'signal', x.status || 'open', x.snooze_until || '', x.note || '', x.updated || Date.now()]); }
-    save(); return { file: r.filePaths[0], from: d.from, count: n }; },
+    const localTasks = all('SELECT * FROM tasks');
+    const taskMerge = WB.mergeShareSide(localTasks, d.tasks || [], { required: ['id', 'opp_id', 'title'], normalize: t => WB.normalizeTask({ ...t, created: t.created || Date.now(), updated: t.updated || Date.now() }) });
+    for (const nrm of taskMerge.rows) {
+      const was = localTasks.find(x => x.id === nrm.id);
+      if (was && was.updated === nrm.updated && was.title === nrm.title && was.due === nrm.due && was.done == nrm.done && was.note === nrm.note) continue;
+      if (was && Number(was.updated || 0) > Number(nrm.updated || 0)) continue;
+      run('INSERT OR REPLACE INTO tasks VALUES(?,?,?,?,?,?,?,?)', [nrm.id, nrm.opp_id, nrm.title, nrm.due, nrm.done, nrm.note, nrm.created, nrm.updated]);
+    }
+    const localTriage = all('SELECT * FROM triage');
+    const triMerge = WB.mergeShareSide(localTriage, d.triage || [], { required: ['id'], normalize: x => ({ id: x.id, kind: x.kind || 'signal', status: x.status || 'open', snooze_until: x.snooze_until || '', note: x.note || '', updated: x.updated || 0 }) });
+    for (const x of triMerge.rows) {
+      const was = localTriage.find(y => y.id === x.id);
+      if (was && Number(was.updated || 0) > Number(x.updated || 0)) continue;
+      if (was && Number(was.updated || 0) === Number(x.updated || 0) && was.status === x.status && was.snooze_until === x.snooze_until) continue;
+      run('INSERT OR REPLACE INTO triage VALUES(?,?,?,?,?,?)', [x.id, x.kind || 'signal', x.status || 'open', x.snooze_until || '', x.note || '', x.updated || Date.now()]);
+    }
+    save(); return { file: r.filePaths[0], from: d.from, count: n, tasks: taskMerge.report, triage: triMerge.report }; },
   'open:url': (_, u) => shell.openExternal(u), 'db:path': () => dbFile, 'open:data': () => shell.openPath(app.getPath('userData'))
 };
 for (const [k, f] of Object.entries(H)) ipcMain.handle(k, f);

@@ -19,7 +19,7 @@ export function Detail({ cur, allOpps, upd, load, say, llmOn, setSel, tab, setTa
 }
 
 function DWork({ o, upd, say, load, setView }) {
-  const [note, setNote] = useState(o.notes || ''), [title, setTitle] = useState(''), [due, setDue] = useState(''), [digest, setDigest] = useState(null);
+  const [note, setNote] = useState(o.notes || ''), [title, setTitle] = useState(''), [due, setDue] = useState(''), [digest, setDigest] = useState(null), [sheet, setSheet] = useState(null);
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
   const tasks = o.tasks || [];
   useEffect(() => { let live = true; api.call('opp:digest', o.id).then(d => { if (live) setDigest(d); }).catch(() => { if (live) setDigest(null); }); return () => { live = false; }; }, [o.id, o.industry, o.stage, tasks.length]);
@@ -48,6 +48,12 @@ function DWork({ o, upd, say, load, setView }) {
       <div className="card" style={{ marginTop: 12 }}><h3><span><I n="sticky-note-line" /> 备注</span></h3>
         <textarea rows="7" value={note} onChange={e => setNote(e.target.value)} placeholder="研究笔记、客户沟通、报价进展…" />
         <button style={{ marginTop: 6 }} onClick={() => { upd(o.id, { notes: note }); say('备注已保存'); }}><I n="save-3-line" />保存备注</button>
+      </div>
+      <div className="card" style={{ marginTop: 12 }}><h3><span><I n="file-text-line" /> 机会一页纸</span></h3>
+        <div className="mut" style={{ marginBottom: 8 }}>把陈述、下一步、研判摘要和备注导出为本机 Markdown 或可打印 HTML，不会外发。</div>
+        <div className="row" style={{ gap: 6 }}><button className="s" onClick={async () => { const r = await api.call('opp:onepager', { id: o.id, fmt: 'preview-html' }); setSheet(r); }}><I n="printer-line" />预览 / 打印</button>
+          <button className="s" onClick={async () => { const pth = await api.call('opp:onepager', { id: o.id, fmt: 'md' }); pth && say(typeof pth === 'string' ? '已导出：' + pth : '已生成一页纸'); }}><I n="markdown-line" />导出 MD</button></div>
+        {sheet?.html && <div className="modal" onClick={() => setSheet(null)}><div className="card wb-preview" onClick={e => e.stopPropagation()} style={{ width: 'min(800px, 92vw)' }}><div className="row"><b>机会一页纸</b><span className="sp" /><button className="s" onClick={() => { const f = document.getElementById('one-print'); f?.contentWindow?.print(); }}>打印</button><button className="x" onClick={() => setSheet(null)}><I n="close-line" /></button></div><iframe id="one-print" title="机会一页纸" srcDoc={sheet.html} style={{ width: '100%', height: '60vh', border: 0 }} /></div></div>}
       </div>
     </div>
     <div>

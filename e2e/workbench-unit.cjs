@@ -330,6 +330,38 @@ t('阶段别名 deep 归一为 research，下一步为验证；未知阶段不�
   assert.strictEqual(h.stage, 'research');
 });
 
+
+t('机会一页纸含陈述与下一步，并转义 HTML；不编造宏观数字', () => {
+  const md = WB.opportunityOnePager({
+    title: '冷链专线', stage: 'screen', total: 77, conf: 0.6, industryName: '公路运输',
+    statement: { who: '货代', pain: '舱位紧', whyNow: '旺季', how: '锁舱' },
+    notes: '已联系船东', evidence: [{ source: 'news', title: '运价上涨', url: 'https://ex.test' }],
+    tasks: [{ title: '要报价', due: '2026-11-20', done: 0 }]
+  }, { digest: { nextHint: '优先处理逾期任务「要报价」。', bullets: [{ text: '尚未拉取宏观数据。' }] }, today: '2026-11-23' });
+  assert.ok(md.includes('# 冷链专线') && md.includes('货代') && md.includes('要报价') && md.includes('已联系船东'));
+  assert.ok(md.includes('尚未拉取宏观数据') && md.includes('本机一页纸') && !md.includes('GDP 增长 5%'));
+  const html = WB.onePagerHtml('# 标题 <script>', { title: 'x', day: '2026-11-23' });
+  assert.ok(html.includes('&lt;script&gt;') && html.includes('打印') && !html.includes('<script>'));
+});
+t('共享包合并：本机较新或对方无时间戳时保留本机，不静默覆盖', () => {
+  const local = [{ id: 't1', opp_id: 'o', title: '本机标题', updated: 200, due: '2026-11-24', done: 0 }];
+  const incoming = [
+    { id: 't1', opp_id: 'o', title: '对方旧标题', updated: 100, due: '2026-11-20', done: 0 },
+    { id: 't2', opp_id: 'o', title: '新任务', updated: 150, due: '', done: 0 },
+    { id: 'bad', title: '缺机会' }
+  ];
+  const m = WB.mergeShareSide(local, incoming, { required: ['id', 'opp_id', 'title'], normalize: x => WB.normalizeTask({ ...x, created: 1, updated: x.updated || 0 }) });
+  assert.strictEqual(m.report.kept, 1);
+  assert.strictEqual(m.report.imported, 1);
+  assert.strictEqual(m.report.skipped, 1);
+  assert.strictEqual(m.rows.find(x => x.id === 't1').title, '本机标题');
+  assert.ok(m.rows.find(x => x.id === 't2'));
+  const unversioned = WB.pickNewerRecord({ id: 's1', status: 'saved', updated: 9 }, { id: 's1', status: 'dismissed' }, ['id']);
+  assert.strictEqual(unversioned.take, 'local');
+  const tie = WB.pickNewerRecord({ id: 's1', updated: 5, status: 'open' }, { id: 's1', updated: 5, status: 'dismissed' }, ['id']);
+  assert.strictEqual(tie.take, 'local');
+});
+
 const pass = results.filter(r => r.ok).length;
 console.log(`\n${pass}/${results.length} passed`);
 process.exit(pass === results.length ? 0 : 1);
