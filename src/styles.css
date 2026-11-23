@@ -95,3 +95,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}th.num{padding-
 .wb-preview iframe{width:100%;height:60vh;border:1px solid var(--line);background:#fff;margin-top:8px;border-radius:6px}
 .seg button{background:var(--panel2);border:1px solid var(--line);color:var(--tx2)}
 .seg button.on{background:var(--sel);color:var(--tx-strong);border-color:var(--ac)}
+
+.empty.err-empty{border-color:var(--danger, #b42318);color:var(--tx)}
+.empty-errors{margin:10px 0 0;padding-left:1.2em;text-align:left;font-size:12px;color:var(--mut);max-width:560px}
+.empty-errors code{margin-right:6px;color:var(--tx)}

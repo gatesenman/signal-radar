@@ -81,7 +81,7 @@ async function refresh(opt = {}) {
   if (!getK('macro') || Date.now() - getK('macro').ts > 86400e3) await refreshMacro();
   if (!getK('chain') || Date.now() - getK('chain').ts > 7 * 86400e3) await refreshChain();
   if (!getK('istats') || Date.now() - getK('istats').ts > 7 * 86400e3) await refreshStats();
-  try { await recluster(); checkAlerts(); } catch (e) { log('重新聚类失败：' + (e.message || e)); } finally { busy = false; } save(true); send('refreshed', report); return report;
+  try { await recluster(); checkAlerts(); } catch (e) { log('重新聚类失败：' + (e.message || e)); } finally { busy = false; } try { setK('lastRefresh', WB.lastRefreshSummary(report)); } catch (e) {} save(true); send('refreshed', report); return report;
 }
 async function refreshChain() { try { const c = await CH.fetchChain(getCfg(), log); setK('chain', c); return c; } catch (e) { log('产业链失败：' + e.message); } }
 async function refreshStats() { try { const s = await CH.fetchStats(getCfg(), log); setK('istats', s); return s; } catch (e) { log('行业统计失败：' + e.message); } }
@@ -312,7 +312,7 @@ const H = {
   'recluster': async () => { await recluster(); save(); return true; },
   'signals:list': (_, q = {}) => all(`SELECT id,source,kind,region,title,url,ts,engagement,ind,ind_by,weight FROM signals WHERE 1=1 ${q.source ? 'AND source=?' : ''} ${q.ind ? 'AND ind LIKE ?' : ''} ${q.q ? 'AND (title LIKE ? OR text LIKE ?)' : ''} ORDER BY ts DESC LIMIT ?`, [...(q.source ? [q.source] : []), ...(q.ind ? [q.ind + '%'] : []), ...(q.q ? ['%' + q.q + '%', '%' + q.q + '%'] : []), q.limit || 400]),
   'stats': () => { const now = Math.floor(Date.now() / 1000);
-    return { total: all('SELECT COUNT(*) n FROM signals')[0].n, day: all('SELECT COUNT(*) n FROM signals WHERE fetched>?', [now - 86400])[0].n, bySource: all('SELECT source, COUNT(*) n FROM signals GROUP BY source ORDER BY n DESC'), byCat: all('SELECT kind, COUNT(*) n FROM signals GROUP BY kind ORDER BY n DESC'), daily: all("SELECT date(ts,'unixepoch','+8 hours') d, kind, COUNT(*) n FROM signals WHERE ts>? GROUP BY d, kind ORDER BY d", [now - 21 * 86400]), lastRun: all('SELECT MAX(ts) t FROM runs')[0].t, unread: all('SELECT COUNT(*) n FROM notifications WHERE read=0')[0].n, embed: EMB.info(), cluster: lastCluster, dbSize: fs.existsSync(dbFile) ? fs.statSync(dbFile).size : 0 }; },
+    return { total: all('SELECT COUNT(*) n FROM signals')[0].n, day: all('SELECT COUNT(*) n FROM signals WHERE fetched>?', [now - 86400])[0].n, bySource: all('SELECT source, COUNT(*) n FROM signals GROUP BY source ORDER BY n DESC'), byCat: all('SELECT kind, COUNT(*) n FROM signals GROUP BY kind ORDER BY n DESC'), daily: all("SELECT date(ts,'unixepoch','+8 hours') d, kind, COUNT(*) n FROM signals WHERE ts>? GROUP BY d, kind ORDER BY d", [now - 21 * 86400]), lastRun: all('SELECT MAX(ts) t FROM runs')[0].t, unread: all('SELECT COUNT(*) n FROM notifications WHERE read=0')[0].n, embed: EMB.info(), cluster: lastCluster, dbSize: fs.existsSync(dbFile) ? fs.statSync(dbFile).size : 0, lastRefresh: getK('lastRefresh', null) }; },
   'logs': () => all('SELECT * FROM logs ORDER BY id DESC LIMIT 200'),
   'coverage': () => coverage(), 'industries': () => INDUSTRIES,
   'macro:get': () => getK('macro'), 'macro:refresh': async () => { const m = await refreshMacro(); save(); return m; },

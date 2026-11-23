@@ -1,6 +1,10 @@
 import { React, useEffect, useState, useMemo, api, I, STAGES, fmt, PH, Empty, Conf } from './ui.jsx';
 
+import * as WBmod from '../electron/workbench.js';
+const WB = WBmod.default || WBmod;
+
 const todaySH = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+const emptyOf = (view, stats, busy) => WB.emptyStateCopy({ busy, lastRefresh: stats?.lastRefresh, hasSignals: !!stats?.total, view });
 
 function pendingOf(opps, today) {
   today = today || todaySH();
@@ -22,10 +26,8 @@ export function Workbench({ opps, stats, open, refresh, busy, say, setView, oppC
   const due = tasks.filter(t => !t.done && t.due && t.due <= today).sort((a, b) => (a.due < b.due ? -1 : 1));
   const byStage = Object.fromEntries(STAGES.map(([k]) => [k, opps.filter(o => (o.stage || 'discover') === k && !o.quality?.noise).length]));
   const pipeN = STAGES.filter(([k]) => k !== 'discover' && k !== 'drop').reduce((a, [k]) => a + (byStage[k] || 0), 0);
-  const emptyText = busy
-    ? '首次采集进行中，请稍候…完成后会自动聚类，一两分钟内就会出现商机。'
-    : '还没有数据。工作台要先有信号才能进入「发现 → 分拣 → 跟进」循环。点击「立即采集」，或等待首次自动采集完成。';
-  if (!stats?.total) return <><PH icon="apps-2-line" title="工作台" sub="发现 → 分拣 → 调研 → 跟进 → 简报，在一个循环里做完" /><Empty refresh={refresh} busy={busy} text={emptyText} /></>;
+  const empty = emptyOf('workbench', stats, busy);
+  if (!stats?.total) return <><PH icon="apps-2-line" title="工作台" sub="发现 → 分拣 → 调研 → 跟进 → 简报，在一个循环里做完" /><Empty refresh={refresh} busy={busy} text={empty.text} kind={empty.kind} errors={empty.errors} /></>;
   const doneTask = async (t, e) => { e.stopPropagation(); await api.call('tasks:update', { id: t.id, done: 1 }); setTasks(await api.call('tasks:list')); say?.('已完成：' + t.title); };
   return <><PH icon="apps-2-line" title="工作台" sub={`信号 ${stats.total.toLocaleString()} · 机会 ${opps.length} · 待分拣 ${pending.length} · 到期任务 ${due.length}`}>
     <button onClick={() => refresh()} disabled={busy}><I n={busy ? 'loader-4-line' : 'refresh-line'} />{busy ? '采集中…' : '立即采集'}</button>
@@ -85,7 +87,7 @@ export function Inbox({ opps, open, load, say, refresh, busy, stats, oppCtx }) {
     <button onClick={() => refresh()} disabled={busy}><I n={busy ? 'loader-4-line' : 'refresh-line'} />{busy ? '采集中…' : '立即采集'}</button>
   </PH>
     <div className="tabs">{TABS.map(([k, n, c]) => <a key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}><I n={k === 'signals' ? 'broadcast-line' : k === 'snoozed' ? 'alarm-line' : k === 'saved' ? 'save-3-line' : k === 'dismissed' ? 'close-circle-line' : 'clipboard-line'} />{n} {c || ''}</a>)}</div>
-    {emptyAll ? <Empty refresh={refresh} busy={busy} text={busy ? '首次采集进行中，请稍候…信号到了会自动出现在待分拣里。' : '还没有信号。点击「立即采集」，或等待首次自动采集完成后再来分拣。'} /> :
+    {emptyAll ? <Empty refresh={refresh} busy={busy} text={emptyOf('inbox', stats, busy).text} kind={emptyOf('inbox', stats, busy).kind} errors={emptyOf('inbox', stats, busy).errors} /> :
       tab === 'signals' ? (!sigs.pending.length ? <Empty text="没有待分拣的新信号。可到「信号流」查看全部来源。" /> : <div className="card">{sigs.pending.map(s => <div key={s.id} className="wb-row">
         <div className="sp"><b>{s.title}</b><div className="mut">{s.source} · {fmt(s.ts)}{s.ind ? ' · ' + s.ind : ''}</div></div>
         <div className="inbox-act"><button className="s" onClick={() => actSig(s, 'save')}><I n="save-3-line" />保存</button>
@@ -128,7 +130,7 @@ export function Briefs({ say, setView, stats, refresh, busy }) {
     <button className="s" onClick={() => api.call('brief:daily:open')}><I n="folder-open-line" />文件夹</button>
     <button className="s" onClick={() => setView('report')}>机会报告 / IC</button>
   </PH>
-    {empty ? <Empty refresh={refresh} busy={busy} text={busy ? '首次采集进行中，请稍候…有数据后即可生成简报。' : '还没有信号，无法生成有内容的简报。请先采集。'} /> :
+    {empty ? <Empty refresh={refresh} busy={busy} text={emptyOf('briefs', stats, busy).text} kind={emptyOf('briefs', stats, busy).kind} errors={emptyOf('briefs', stats, busy).errors} /> :
       !cur?.md ? <div className="card mut">还没有{kind === 'weekly' ? '每周' : '每日'}简报。点击「立即生成」。每日快照后也会自动生成每日简报（可在设置中关闭）。</div> :
       <div className="card brief"><pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, maxHeight: 560, overflow: 'auto', margin: 0 }}>{cur.md}</pre></div>}
     {!!list.length && <div className="card" style={{ marginTop: 12 }}><h3><span><I n="file-text-line" /> 本机已保存</span><span className="mut">{list.length} 份</span></h3>

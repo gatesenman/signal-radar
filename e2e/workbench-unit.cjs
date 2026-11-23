@@ -120,6 +120,44 @@ t('normalizeTask 去空白并规范 done', () => {
   assert.strictEqual(t1.done, 1);
 });
 
+
+t('默认首页是工作台；homeMode=role 才走 5.0 角色页', () => {
+  assert.strictEqual(WB.resolveHomeView({}), 'workbench');
+  assert.strictEqual(WB.resolveHomeView({ onboard: { role: 'founder' } }), 'workbench');
+  assert.strictEqual(WB.resolveHomeView({ homeMode: 'role', onboard: { role: 'founder' } }), 'dims');
+  assert.strictEqual(WB.resolveHomeView({ homeMode: 'role', onboard: { role: 'vc' } }), 'radar');
+  assert.strictEqual(WB.resolveHomeView({ homeMode: 'role', onboard: { role: 'corp' } }), 'chain');
+  assert.strictEqual(WB.resolveHomeView({ homeMode: 'role', onboard: { role: 'unknown' } }), 'workbench');
+  assert.strictEqual(WB.ROLE_HOME.founder, 'dims');
+});
+t('采集摘要：全部失败 / 部分失败 / 成功，不把空报告当成成功', () => {
+  const err = WB.lastRefreshSummary([{ id: 'fred', ok: false, err: 'nokey' }, { id: 'hn', ok: false, err: 'timeout' }], 1);
+  assert.strictEqual(err.status, 'error');
+  assert.strictEqual(err.ok, 0);
+  assert.strictEqual(err.fail, 2);
+  assert.strictEqual(err.errors[0].id, 'fred');
+  const part = WB.lastRefreshSummary([{ id: 'hn', ok: true, added: 3 }, { id: 'fred', ok: false, err: 'nokey' }], 2);
+  assert.strictEqual(part.status, 'partial');
+  assert.strictEqual(part.added, 3);
+  const ok = WB.lastRefreshSummary([{ id: 'hn', ok: true, added: 1 }], 3);
+  assert.strictEqual(ok.status, 'ok');
+  const empty = WB.lastRefreshSummary([], 4);
+  assert.strictEqual(empty.status, 'empty');
+});
+t('空状态文案：采集中、失败、尚无数据三种互不混淆', () => {
+  const busy = WB.emptyStateCopy({ busy: true, hasSignals: false, view: 'workbench' });
+  assert.strictEqual(busy.kind, 'busy');
+  assert.ok(busy.text.includes('进行中'));
+  const err = WB.emptyStateCopy({ hasSignals: false, lastRefresh: { status: 'error', errors: [{ id: 'x', err: 'down' }] }, view: 'inbox' });
+  assert.strictEqual(err.kind, 'error');
+  assert.ok(err.errors.length === 1 && err.text.includes('失败'));
+  const empty = WB.emptyStateCopy({ hasSignals: false, view: 'briefs' });
+  assert.strictEqual(empty.kind, 'empty');
+  assert.ok(empty.text.includes('简报'));
+  const has = WB.emptyStateCopy({ hasSignals: true, lastRefresh: { status: 'error' }, view: 'workbench' });
+  assert.strictEqual(has.kind, 'empty'); // 已有信号时不把失败当成空库
+});
+
 const pass = results.filter(r => r.ok).length;
 console.log(`\n${pass}/${results.length} passed`);
 process.exit(pass === results.length ? 0 : 1);

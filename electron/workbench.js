@@ -177,8 +177,60 @@ function signalInbox(rows, triageList, today) {
   return { pending, snoozed, dismissed, saved };
 }
 
+
+const ROLE_HOME = { founder: 'dims', vc: 'radar', corp: 'chain' };
+function resolveHomeView(cfg = {}) {
+  if (cfg.homeMode === 'role') {
+    const role = cfg.onboard && cfg.onboard.role;
+    return ROLE_HOME[role] || 'workbench';
+  }
+  return 'workbench';
+}
+
+function lastRefreshSummary(report, now = Date.now()) {
+  const list = Array.isArray(report) ? report : [];
+  const ok = list.filter(r => r && r.ok).length;
+  const fail = list.filter(r => r && !r.ok);
+  const added = list.reduce((a, r) => a + (r && r.added || 0), 0);
+  const status = !list.length ? 'empty' : (ok === 0 ? 'error' : (fail.length ? 'partial' : 'ok'));
+  return {
+    ts: now, ok, fail: fail.length, added, status,
+    errors: fail.slice(0, 8).map(r => ({ id: r.id, err: String(r.err || '失败') }))
+  };
+}
+
+function emptyStateCopy({ busy, lastRefresh, hasSignals, view = 'workbench' } = {}) {
+  const texts = {
+    workbench: {
+      busy: '首次采集进行中，请稍候…完成后会自动聚类，一两分钟内就会出现商机。',
+      empty: '还没有数据。工作台要先有信号才能进入「发现 → 分拣 → 跟进」循环。点击「立即采集」，或等待首次自动采集完成。',
+      error: '最近一次采集没有成功写入信号。下面是失败原因（如实记录，不是示例数据）。可点击「立即采集」重试。',
+      partial: '最近一次采集部分数据源失败，库里还没有信号。失败原因见下。可重试采集。'
+    },
+    inbox: {
+      busy: '首次采集进行中，请稍候…信号到了会自动出现在待分拣里。',
+      empty: '还没有信号。点击「立即采集」，或等待首次自动采集完成后再来分拣。',
+      error: '最近一次采集失败，收件箱还是空的。失败原因见下，可重试。',
+      partial: '部分数据源采集失败，库里还没有可分拣的信号。失败原因见下。'
+    },
+    briefs: {
+      busy: '首次采集进行中，请稍候…有数据后即可生成简报。',
+      empty: '还没有信号，无法生成有内容的简报。请先采集。',
+      error: '最近一次采集失败，还没有可写入简报的信号。失败原因见下。',
+      partial: '部分数据源采集失败，库里还没有信号，无法生成有内容的简报。'
+    }
+  };
+  const pack = texts[view] || texts.workbench;
+  if (busy) return { kind: 'busy', text: pack.busy };
+  const st = lastRefresh && lastRefresh.status;
+  if (!hasSignals && st === 'error') return { kind: 'error', text: pack.error, errors: lastRefresh.errors || [] };
+  if (!hasSignals && st === 'partial') return { kind: 'partial', text: pack.partial, errors: lastRefresh.errors || [] };
+  return { kind: 'empty', text: pack.empty, errors: [] };
+}
+
 module.exports = {
   STAGE_CN, STAGE_NEXT, ACTIVE_STAGES, todaySH, addDaysSH, weekStartSH, weekKey, nextStage, migrate,
   inboxStatusOf, isPending, groupInbox, triagePatch, newTaskId, normalizeTask, taskState, dueTasks,
-  csvEscape, escHtml, pipelineRows, pipelineCsv, pipelineHtml, loopBriefSections, signalInbox
+  csvEscape, escHtml, pipelineRows, pipelineCsv, pipelineHtml, loopBriefSections, signalInbox,
+  ROLE_HOME, resolveHomeView, lastRefreshSummary, emptyStateCopy
 };
