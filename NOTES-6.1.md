@@ -25,3 +25,9 @@
 收件箱仍按待分拣 / 新信号 / 稍后 / 已收录 / 已忽略筛选（状态写入本机库）。新增：J/K 移动当前条，E 收录，Z 稍后，X 忽略，U 或工具栏「撤销」恢复上一次分拣（含批量），Enter 打开工作区。可勾选多条后批量收录/稍后/忽略，全部走同一套 IPC，不会只改界面。输入框内快捷键不触发。
 
 主要文件：`electron/workbench.js`、`electron/main.js`、`src/workbench.jsx`。
+
+## r5 管道纪律：停留天数、下一步到期与停滞提示
+
+切换阶段时写入 `stageChangedAt`。管道列表/看板/导出据此计算停留天数；初筛 7 天、深研/验证 14 天、立项 21 天无推进则提示「停滞」。管道中的机会如果没有带到期日的跟进任务，会提示「缺下一步」。逾期任务行和卡片高亮。没有阶段变更时间的旧记录不会被假装成停滞。阶段键仍是 discover/screen/research/validate/go/drop。看板列按 `stage || 'discover'` 归类，噪声簇不进看板。
+
+主要文件：`electron/workbench.js`、`electron/main.js`、`src/views2.jsx`。

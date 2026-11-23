@@ -100,12 +100,12 @@ async function recluster() {
   log(`语义聚类：${res.pool} 条信号 → ${res.clusters} 个簇 → ${res.opps.length} 个机会（相似度阈值 ${cfg.clusterSim}，${lastCluster.ms}ms）`);
 }
 function ws(id) { const r = all('SELECT json FROM workspace WHERE opp_id=?', [id])[0]; return r ? JSON.parse(r.json) : {}; }
-function setWs(id, patch) { const w = { ...ws(id), ...patch, updatedAt: Date.now() }; for (const k in patch) if (patch[k] === undefined) delete w[k]; run('INSERT OR REPLACE INTO workspace VALUES(?,?)', [id, JSON.stringify(w)]); save(); return w; }
+function setWs(id, patch) { const cur = ws(id); if (patch.stage && patch.stage !== (cur.stage || 'discover') && patch.stageChangedAt == null) patch = { ...patch, stageChangedAt: Date.now() }; const w = { ...cur, ...patch, updatedAt: Date.now() }; for (const k in patch) if (patch[k] === undefined) delete w[k]; run('INSERT OR REPLACE INTO workspace VALUES(?,?)', [id, JSON.stringify(w)]); save(); return w; }
 function merged(o, macro) { const w = ws(o.id); const l = w.llm || {}; const ch = chainLink(o, macro?.chainData);
   const asymmetry = [...(o.asymmetry || []), ...(ch?.chokes || []).slice(0, 2).map(c => ({ key: 'choke', type: '产业链卡脖子', gap: 80, desc: `${ch.name} ${c.node}：${c.why}`, evidence: [{ title: c.node + ' 出口国份额（OEC/USGS）', url: c.url, source: 'chain' }] }))];
   const dims = l.dims || o.dims; const delta = l.dims ? Object.keys(dims).reduce((a, k) => a + dims[k] - o.dims[k], 0) / 6 : 0;
   const ue = { ...o.unitEcon, ...(w.unitEcon || {}) };
-  return { ...o, ...l, dims, unitEcon: ue, statement: l.statement || o.statement, checklist: w.checklist || l.checklist || o.checklist, stage: w.stage || 'discover', notes: w.notes || '', watched: !!w.watched, inboxStatus: w.inboxStatus || 'open', snoozeUntil: w.snoozeUntil || '', ruleTotal: o.total, total: Math.round(o.total + delta), comments: w.comments || [], tam: E.tam({ ...o, unitEcon: ue }, macro, w.assump || {}), assump: w.assump || {}, chain: ch, asymmetry }; }
+  return { ...o, ...l, dims, unitEcon: ue, statement: l.statement || o.statement, checklist: w.checklist || l.checklist || o.checklist, stage: w.stage || 'discover', stageChangedAt: w.stageChangedAt || null, notes: w.notes || '', watched: !!w.watched, inboxStatus: w.inboxStatus || 'open', snoozeUntil: w.snoozeUntil || '', ruleTotal: o.total, total: Math.round(o.total + delta), comments: w.comments || [], tam: E.tam({ ...o, unitEcon: ue }, macro, w.assump || {}), assump: w.assump || {}, chain: ch, asymmetry }; }
 function chainLink(o, chain) { const c = chainFor(o.industry, chain); if (!c) return null; const chokes = c.nodes.filter(n => n.choke);
   return { code: c.code, name: c.name, nodes: c.nodes, chokes: chokes.map(n => ({ node: n.stage + '·' + n.name, why: n.chokeWhy, growth: n.growth, url: n.url })) }; }
 // v4.1 个性化：Rocchio 式隐式反馈画像（观察/阶段推进为正，放弃为负），在行业与主题词上累积权重

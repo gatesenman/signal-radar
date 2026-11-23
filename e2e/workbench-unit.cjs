@@ -240,6 +240,42 @@ t('收件箱快捷键：移动/收录/稍后/忽略/撤销，输入框内不触�
   assert.strictEqual(WB.inboxKeyAction('j', { repeat: true }), 'next');
 });
 
+
+t('管道纪律：逾期、缺下一步、停滞按阶段阈值计算，缺时间戳不假装停滞', () => {
+  const today = '2026-11-23';
+  const overdue = WB.pipelineHealth({
+    stage: 'screen', stageChangedAt: Date.parse('2026-11-20T00:00:00+08:00'),
+    tasks: [{ title: '要报价', due: '2026-11-20', done: 0 }]
+  }, today);
+  assert.strictEqual(overdue.overdue, true);
+  assert.strictEqual(overdue.ageDays, 3);
+  assert.ok(overdue.hint.includes('逾期'));
+  const needs = WB.pipelineHealth({ stage: 'research', stageChangedAt: Date.parse('2026-11-20T00:00:00+08:00'), tasks: [] }, today);
+  assert.strictEqual(needs.needsAction, true);
+  assert.ok(needs.hint.includes('下一步'));
+  const stuck = WB.pipelineHealth({
+    stage: 'screen', stageChangedAt: Date.parse('2026-11-01T00:00:00+08:00'),
+    tasks: [{ title: '下周再聊', due: '2026-11-30', done: 0 }]
+  }, today);
+  assert.strictEqual(stuck.stuck, true);
+  assert.ok(stuck.ageDays >= 7 && stuck.hint.includes('初筛'));
+  const unknown = WB.pipelineHealth({ stage: 'validate', tasks: [{ title: '打电话', due: '2026-11-25', done: 0 }] }, today);
+  assert.strictEqual(unknown.stuck, false);
+  assert.strictEqual(unknown.ageDays, null);
+  const disc = WB.pipelineHealth({ stage: 'discover' }, today);
+  assert.strictEqual(disc.needsAction, false);
+});
+t('管道导出包含停留天数与停滞提示列', () => {
+  const csv = WB.pipelineCsv([
+    { id: 'o1', title: '专线', industryName: '运输', stage: 'screen', total: 70, conf: 0.5, stageChangedAt: Date.parse('2026-11-01T00:00:00+08:00'), notes: '' }
+  ], []);
+  assert.ok(csv.includes('停留天数') && csv.includes('阶段停滞') && csv.includes('缺下一步'));
+  const html = WB.pipelineHtml([
+    { id: 'o1', title: '专线', industryName: '运输', stage: 'screen', total: 70, conf: 0.5, stageChangedAt: Date.parse('2026-11-01T00:00:00+08:00'), tasks: [{ title: 'x', due: '2026-11-01', done: 0 }] }
+  ], [], { day: '2026-11-23' });
+  assert.ok(html.includes('停留天数') && html.includes('tr class="overdue"'));
+});
+
 const pass = results.filter(r => r.ok).length;
 console.log(`\n${pass}/${results.length} passed`);
 process.exit(pass === results.length ? 0 : 1);

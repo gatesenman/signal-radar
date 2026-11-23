@@ -102,12 +102,14 @@ function pipelineRows(opps, tasks = []) {
     const ts = by[o.id] || o.tasks || [];
     const open = ts.filter(t => !t.done);
     const nextDue = open.map(t => t.due).filter(Boolean).sort()[0] || '';
+    const h = pipelineHealth({ ...o, tasks: ts });
     return {
       id: o.id, title: o.title, industry: o.industryName || '', sector: o.sector || '',
       stage: o.stage || 'discover', stageName: STAGE_CN[o.stage || 'discover'] || o.stage,
       total: o.total, conf: o.conf, watched: o.watched ? 1 : 0,
       signals: o.metrics?.signals ?? '', notes: o.notes || '',
-      openTasks: open.length, nextDue, stale: o.stale ? 1 : 0
+      openTasks: open.length, nextDue: h.nextDue || nextDue, stale: o.stale ? 1 : 0,
+      ageDays: h.ageDays, overdue: h.overdue ? 1 : 0, needsAction: h.needsAction ? 1 : 0, stuck: h.stuck ? 1 : 0, hint: h.hint
     };
   });
 }
@@ -116,7 +118,7 @@ function pipelineCsv(opps, tasks = []) {
     ['id', 'ID'], ['title', '机会'], ['industry', '行业'], ['sector', '板块'],
     ['stageName', '阶段'], ['stage', '阶段键'], ['total', '综合分'], ['conf', '置信度'],
     ['watched', '观察'], ['signals', '信号数'], ['openTasks', '未完成任务'],
-    ['nextDue', '最近到期'], ['notes', '备注'], ['stale', '已过期簇']
+    ['nextDue', '最近到期'], ['ageDays', '停留天数'], ['overdue', '任务逾期'], ['needsAction', '缺下一步'], ['stuck', '阶段停滞'], ['hint', '提示'], ['notes', '备注'], ['stale', '已过期簇']
   ];
   const rows = pipelineRows(opps, tasks);
   const lines = [cols.map(c => csvEscape(c[1])).join(',')];
@@ -128,14 +130,14 @@ function pipelineHtml(opps, tasks = [], meta = {}) {
   const counts = {};
   for (const r of rows) counts[r.stage] = (counts[r.stage] || 0) + 1;
   const pipe = Object.keys(STAGE_CN).map(k => `${STAGE_CN[k]} ${counts[k] || 0}`).join(' · ');
-  const tr = rows.map(r => `<tr><td>${escHtml(r.title)}</td><td>${escHtml(r.industry)}</td><td>${escHtml(r.stageName)}</td><td>${r.total}</td><td>${r.conf ?? ''}</td><td>${r.openTasks}</td><td>${escHtml(r.nextDue)}</td><td>${escHtml(String(r.notes).slice(0, 160))}</td></tr>`).join('');
+  const tr = rows.map(r => `<tr class="${r.overdue ? 'overdue' : r.stuck ? 'stuck' : r.needsAction ? 'needs' : ''}"><td>${escHtml(r.title)}</td><td>${escHtml(r.industry)}</td><td>${escHtml(r.stageName)}</td><td>${r.total}</td><td>${r.conf ?? ''}</td><td>${r.openTasks}</td><td>${escHtml(r.nextDue)}</td><td>${r.ageDays ?? ''}</td><td>${escHtml(r.hint || '')}</td><td>${escHtml(String(r.notes).slice(0, 160))}</td></tr>`).join('');
   return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>商机雷达 · 管道清单</title>
-<style>body{font:14px/1.5 "Noto Sans CJK SC","PingFang SC",sans-serif;color:#111;margin:24px}h1{font-size:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top}th{background:#f4f6f9}td:nth-child(4),td:nth-child(5),td:nth-child(6){text-align:right}@media print{button{display:none}}</style>
+<style>body{font:14px/1.5 "Noto Sans CJK SC","PingFang SC",sans-serif;color:#111;margin:24px}h1{font-size:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top}th{background:#f4f6f9}td:nth-child(4),td:nth-child(5),td:nth-child(6),td:nth-child(8){text-align:right}tr.overdue{background:#fde8e8}tr.stuck{background:#fff4e5}tr.needs{background:#f4f6f9}@media print{button{display:none}}</style>
 </head><body><button onclick="print()">打印</button>
 <h1>商机雷达 · 管道清单</h1>
 <p>${escHtml(meta.day || todaySH())}（北京时间） · ${rows.length} 条 · ${escHtml(pipe)}</p>
-<table><thead><tr><th>机会</th><th>行业</th><th>阶段</th><th>综合分</th><th>置信度</th><th>未完成任务</th><th>最近到期</th><th>备注</th></tr></thead>
-<tbody>${tr || '<tr><td colspan="8">暂无机会。请先采集信号并聚类。</td></tr>'}</tbody></table>
+<table><thead><tr><th>机会</th><th>行业</th><th>阶段</th><th>综合分</th><th>置信度</th><th>未完成任务</th><th>最近到期</th><th>停留天数</th><th>提示</th><th>备注</th></tr></thead>
+<tbody>${tr || '<tr><td colspan="10">暂无机会。请先采集信号并聚类。</td></tr>'}</tbody></table>
 <p style="color:#666;font-size:12px">本清单由本机数据生成，不会外发。</p></body></html>`;
 }
 
@@ -328,9 +330,43 @@ function inboxKeyAction(key, { meta, ctrl, alt, repeat, typing } = {}) {
   return map[key] || null;
 }
 
+
+const STALL_DAYS = { screen: 7, research: 14, validate: 14, go: 21 };
+function daysBetween(fromDay, toDay) {
+  if (!fromDay || !toDay) return null;
+  const a = Date.parse(fromDay + 'T00:00:00+08:00'), b = Date.parse(toDay + 'T00:00:00+08:00');
+  if (!isFinite(a) || !isFinite(b)) return null;
+  return Math.round((b - a) / 86400e3);
+}
+function stageChangedDay(o, now = Date.now()) {
+  const ts = o && (o.stageChangedAt || o.updatedAt);
+  if (!ts) return null;
+  const n = +ts;
+  if (!isFinite(n) || n <= 0) return null;
+  return todaySH(n > 1e12 ? n : n * 1000);
+}
+function pipelineHealth(o = {}, today, opts = {}) {
+  today = today || todaySH();
+  const stall = Object.assign({}, STALL_DAYS, opts.stallDays || {});
+  const stage = o.stage || 'discover';
+  const changed = stageChangedDay(o);
+  const ageDays = changed ? daysBetween(changed, today) : null;
+  const open = (o.tasks || []).filter(t => !t.done);
+  const nextDue = open.map(t => t.due).filter(Boolean).sort()[0] || '';
+  const overdue = !!(nextDue && nextDue < today);
+  const needsAction = ACTIVE_STAGES.includes(stage) && !open.some(t => t.due);
+  const limit = stall[stage];
+  const stuck = ACTIVE_STAGES.includes(stage) && ageDays != null && limit != null && ageDays >= limit;
+  let hint = '';
+  if (overdue) hint = '有逾期任务，应先处理或改期。';
+  else if (needsAction) hint = '还没有下一步行动或到期日。';
+  else if (stuck) hint = '已在「' + (STAGE_CN[stage] || stage) + '」停留 ' + ageDays + ' 天（参考阈值 ' + limit + ' 天）。';
+  return { stage, ageDays, nextDue, overdue, needsAction, stuck, stallAfter: limit || null, hint };
+}
+
 module.exports = {
   STAGE_CN, STAGE_NEXT, ACTIVE_STAGES, todaySH, addDaysSH, weekStartSH, weekKey, nextStage, migrate,
   inboxStatusOf, isPending, groupInbox, triagePatch, newTaskId, normalizeTask, taskState, dueTasks,
   csvEscape, escHtml, pipelineRows, pipelineCsv, pipelineHtml, loopBriefSections, signalInbox,
-  ROLE_HOME, resolveHomeView, lastRefreshSummary, emptyStateCopy, taskAlertHits, notifOpenTarget, workspaceDigest, snapshotOppTriage, snapshotSigTriage, undoTriagePatch, makeUndoEntry, batchTriagePlan, inboxKeyAction
+  ROLE_HOME, resolveHomeView, lastRefreshSummary, emptyStateCopy, taskAlertHits, notifOpenTarget, workspaceDigest, snapshotOppTriage, snapshotSigTriage, undoTriagePatch, makeUndoEntry, batchTriagePlan, inboxKeyAction, STALL_DAYS, daysBetween, stageChangedDay, pipelineHealth
 };

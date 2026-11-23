@@ -107,3 +107,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}th.num{padding-
 .inbox-keys{font-size:11px;margin:6px 0 8px}
 .inbox-batch{display:flex;gap:8px;align-items:center;margin:0 0 8px;flex-wrap:wrap}
 .wb-row.on{outline:1px solid var(--ac);background:var(--panel2)}
+
+tr.row-overdue, .card-overdue{background:color-mix(in srgb, var(--danger, #b42318) 12%, var(--panel));}
+tr.row-stuck, .card-stuck{background:color-mix(in srgb, var(--warn, #d97706) 12%, var(--panel));}
+tr.row-needs{background:var(--panel2)}
