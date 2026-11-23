@@ -103,3 +103,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}th.num{padding-
 .wb-hint{font-size:13px;margin:0 0 8px;padding:8px 10px;background:var(--panel2);border-radius:6px}
 .wb-digest{font-size:12px;line-height:1.45;margin:0 0 6px;cursor:pointer}
 .wb-digest:hover{color:var(--tx-strong)}
+
+.inbox-keys{font-size:11px;margin:6px 0 8px}
+.inbox-batch{display:flex;gap:8px;align-items:center;margin:0 0 8px;flex-wrap:wrap}
+.wb-row.on{outline:1px solid var(--ac);background:var(--panel2)}

@@ -205,6 +205,41 @@ t('工作区摘要：卡脖子、论文样本不足、宏观在库与下一步�
   assert.ok(due.nextHint.includes('逾期') && due.nextHint.includes('要报价'));
 });
 
+
+t('撤销分拣：恢复收录前的状态，不会把忽略写成稍后', () => {
+  const entry = WB.makeUndoEntry('opp', 'o_1', WB.snapshotOppTriage({ inboxStatus: 'open', stage: 'discover', watched: false }), 'save', { stage: 'screen' }, 1);
+  const p = WB.undoTriagePatch(entry);
+  assert.strictEqual(p.inboxStatus, 'open');
+  assert.strictEqual(p.stage, 'discover');
+  assert.strictEqual(p.watched, false);
+  const sig = WB.undoTriagePatch(WB.makeUndoEntry('signal', 's1', WB.snapshotSigTriage({ status: 'open' }), 'dismiss'));
+  assert.strictEqual(sig.inboxStatus, 'open');
+  let threw = false; try { WB.undoTriagePatch(null); } catch (e) { threw = /没有可撤销/.test(e.message); }
+  assert.ok(threw);
+});
+t('批量分拣：对每个 id 生成同一动作的 patch，空选中抛错', () => {
+  const now = Date.parse('2026-11-22T20:00:00Z');
+  const plan = WB.batchTriagePlan(['a', 'b', 'a'], 'snooze', { days: 3 }, now);
+  assert.deepStrictEqual(plan.map(x => x.id), ['a', 'b']);
+  assert.strictEqual(plan[0].patch.inboxStatus, 'snoozed');
+  assert.strictEqual(plan[0].patch.snoozeUntil, '2026-11-26');
+  let threw = false; try { WB.batchTriagePlan([], 'save'); } catch (e) { threw = /没有选中/.test(e.message); }
+  assert.ok(threw);
+});
+t('收件箱快捷键：移动/收录/稍后/忽略/撤销，输入框内不触发', () => {
+  assert.strictEqual(WB.inboxKeyAction('j'), 'next');
+  assert.strictEqual(WB.inboxKeyAction('k'), 'prev');
+  assert.strictEqual(WB.inboxKeyAction('e'), 'save');
+  assert.strictEqual(WB.inboxKeyAction('z'), 'snooze');
+  assert.strictEqual(WB.inboxKeyAction('x'), 'dismiss');
+  assert.strictEqual(WB.inboxKeyAction('u'), 'undo');
+  assert.strictEqual(WB.inboxKeyAction('Enter'), 'open');
+  assert.strictEqual(WB.inboxKeyAction('e', { typing: true }), null);
+  assert.strictEqual(WB.inboxKeyAction('e', { ctrl: true }), null);
+  assert.strictEqual(WB.inboxKeyAction('e', { repeat: true }), null);
+  assert.strictEqual(WB.inboxKeyAction('j', { repeat: true }), 'next');
+});
+
 const pass = results.filter(r => r.ok).length;
 console.log(`\n${pass}/${results.length} passed`);
 process.exit(pass === results.length ? 0 : 1);

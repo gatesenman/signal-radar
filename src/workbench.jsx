@@ -1,4 +1,4 @@
-import { React, useEffect, useState, useMemo, api, I, STAGES, fmt, PH, Empty, Conf } from './ui.jsx';
+import { React, useEffect, useState, useMemo, useRef, api, I, STAGES, fmt, PH, Empty, Conf } from './ui.jsx';
 
 import * as WBmod from '../electron/workbench.js';
 const WB = WBmod.default || WBmod;
@@ -59,8 +59,10 @@ export function Workbench({ opps, stats, open, refresh, busy, say, setView, oppC
   </>;
 }
 
+
 export function Inbox({ opps, open, load, say, refresh, busy, stats, oppCtx }) {
   const [tab, setTab] = useState('pending'), [days, setDays] = useState(1), [sigs, setSigs] = useState({ pending: [], snoozed: [], dismissed: [], saved: [] });
+  const [cur, setCur] = useState(0), [picked, setPicked] = useState(() => new Set()), [canUndo, setCanUndo] = useState(false);
   const today = todaySH();
   const g = useMemo(() => {
     const pending = pendingOf(opps, today);
@@ -71,8 +73,42 @@ export function Inbox({ opps, open, load, say, refresh, busy, stats, oppCtx }) {
   }, [opps, today]);
   const loadSig = () => api.call('inbox:signals').then(setSigs).catch(() => setSigs({ pending: [], snoozed: [], dismissed: [], saved: [] }));
   useEffect(() => { loadSig(); }, [opps]);
-  const actOpp = async (o, action, extra) => { await api.call('inbox:triage', { id: o.id, kind: 'opp', action, extra }); await load(); say(action === 'save' ? '已收录到管道' : action === 'snooze' ? '已稍后处理' : action === 'dismiss' ? '已从收件箱忽略（机会仍在雷达中）' : action === 'restore' ? '已放回待分拣' : '已更新'); };
-  const actSig = async (s, action, extra) => { await api.call('inbox:triage', { id: s.id, kind: 'signal', action, extra }); await loadSig(); say('信号已更新'); };
+  const list = tab === 'signals' ? (sigs.pending || []) : tab === 'snoozed' ? g.snoozed : tab === 'saved' ? g.saved : tab === 'dismissed' ? g.dismissed : g.pending;
+  useEffect(() => { setCur(0); setPicked(new Set()); }, [tab]);
+  const bag = useRef({}); bag.current = { tab, days, cur, list, sigs, g };
+  const sayAct = action => action === 'save' ? '已收录到管道' : action === 'snooze' ? '已稍后处理' : action === 'dismiss' ? '已从收件箱忽略（机会仍在雷达中）' : action === 'restore' ? '已放回待分拣' : '已更新';
+  const actOpp = async (o, action, extra) => { await api.call('inbox:triage', { id: o.id, kind: 'opp', action, extra }); setCanUndo(true); await load(); say(sayAct(action)); };
+  const actSig = async (s, action, extra) => { await api.call('inbox:triage', { id: s.id, kind: 'signal', action, extra }); setCanUndo(true); await loadSig(); say('信号已更新'); };
+  const undo = async () => { try { await api.call('inbox:undo'); await load(); await loadSig(); setCanUndo(false); say('已撤销上一次分拣'); } catch (e) { say(e.message || '没有可撤销的分拣'); } };
+  const batch = async (action, extra) => {
+    const ids = [...picked]; if (!ids.length) return say('请先勾选条目');
+    await api.call('inbox:batch', { ids, kind: tab === 'signals' ? 'signal' : 'opp', action, extra });
+    setPicked(new Set()); setCanUndo(true);
+    if (tab === 'signals') await loadSig(); else await load();
+    say('已批量处理 ' + ids.length + ' 条，可按 U 撤销');
+  };
+  const togPick = (id, e) => { e.stopPropagation(); const s = new Set(picked); s.has(id) ? s.delete(id) : s.add(id); setPicked(s); };
+  useEffect(() => {
+    const onKey = e => {
+      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+      const act = WB.inboxKeyAction(e.key, { meta: e.metaKey, ctrl: e.ctrlKey, alt: e.altKey, repeat: e.repeat, typing });
+      if (!act) return;
+      const b = bag.current, rows = b.list || [];
+      e.preventDefault();
+      if (act === 'next') setCur(i => Math.min(Math.max(rows.length - 1, 0), i + 1));
+      else if (act === 'prev') setCur(i => Math.max(0, i - 1));
+      else if (act === 'clear') setPicked(new Set());
+      else if (act === 'undo') undo();
+      else if (act === 'open') { const o = rows[b.cur]; if (o?.id && b.tab !== 'signals') open(o.id, 'work'); }
+      else if (['save', 'snooze', 'dismiss'].includes(act)) {
+        const o = rows[b.cur]; if (!o) return;
+        const extra = act === 'save' && b.tab !== 'signals' ? { stage: 'screen' } : act === 'snooze' ? { days: b.days } : {};
+        if (b.tab === 'signals') actSig(o, act, extra); else actOpp(o, act, extra);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const emptyAll = !stats?.total;
   const TABS = [['pending', '待分拣', g.pending.length], ['signals', '新信号', sigs.pending.length], ['snoozed', '稍后', g.snoozed.length + sigs.snoozed.length], ['saved', '已收录', g.saved.length + sigs.saved.length], ['dismissed', '已忽略', g.dismissed.length + sigs.dismissed.length]];
   const rowActs = (o) => <div className="inbox-act" onClick={e => e.stopPropagation()}>
@@ -81,39 +117,49 @@ export function Inbox({ opps, open, load, say, refresh, busy, stats, oppCtx }) {
     <button className="s" onClick={() => actOpp(o, 'dismiss')}><I n="close-circle-line" />忽略</button>
     <select value={o.stage || 'discover'} onChange={e => actOpp(o, 'stage', { stage: e.target.value })}>{STAGES.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>
   </div>;
+  const mark = (id, i) => <input type="checkbox" checked={picked.has(id)} aria-label="选中此条" onChange={e => togPick(id, e)} onClick={e => e.stopPropagation()} style={{ marginRight: 8 }} />;
   return <><PH icon="clipboard-line" title="收件箱" sub="把新发现分拣进管道：收录、稍后、忽略，或直接指定阶段。忽略不会删除雷达里的机会。">
     <span className="mut" style={{ fontSize: 12 }}>稍后天数</span>
     <select value={days} onChange={e => setDays(+e.target.value)} style={{ width: 72 }}>{[1, 3, 7, 14].map(n => <option key={n} value={n}>{n} 天</option>)}</select>
+    <button className="s" onClick={undo} disabled={!canUndo} title="撤销上一次分拣（U）"><I n="arrow-go-back-line" />撤销</button>
     <button onClick={() => refresh()} disabled={busy}><I n={busy ? 'loader-4-line' : 'refresh-line'} />{busy ? '采集中…' : '立即采集'}</button>
   </PH>
-    <div className="tabs">{TABS.map(([k, n, c]) => <a key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}><I n={k === 'signals' ? 'broadcast-line' : k === 'snoozed' ? 'alarm-line' : k === 'saved' ? 'save-3-line' : k === 'dismissed' ? 'close-circle-line' : 'clipboard-line'} />{n} {c || ''}</a>)}</div>
+    <div className="tabs" role="tablist">{TABS.map(([k, n, c]) => <a key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}><I n={k === 'signals' ? 'broadcast-line' : k === 'snoozed' ? 'alarm-line' : k === 'saved' ? 'save-3-line' : k === 'dismissed' ? 'close-circle-line' : 'clipboard-line'} />{n} {c || ''}</a>)}</div>
+    <div className="mut inbox-keys">键盘：J/K 移动 · E 收录 · Z 稍后 · X 忽略 · U 撤销 · Enter 打开工作区。可勾选后批量分拣，状态写入本机数据库。</div>
+    {!!picked.size && tab !== 'saved' && <div className="inbox-batch"><span className="mut">已选 {picked.size}</span>
+      <button className="s" onClick={() => batch(tab === 'dismissed' || tab === 'snoozed' ? 'restore' : 'save', tab === 'signals' ? {} : { stage: 'screen' })}>{tab === 'dismissed' || tab === 'snoozed' ? '放回所选' : '收录所选'}</button>
+      {tab === 'pending' || tab === 'signals' ? <><button className="s" onClick={() => batch('snooze', { days })}>稍后所选</button><button className="s" onClick={() => batch('dismiss')}>忽略所选</button></> : null}
+      <button className="s" onClick={() => setPicked(new Set())}>取消选择</button></div>}
     {emptyAll ? <Empty refresh={refresh} busy={busy} text={emptyOf('inbox', stats, busy).text} kind={emptyOf('inbox', stats, busy).kind} errors={emptyOf('inbox', stats, busy).errors} /> :
-      tab === 'signals' ? (!sigs.pending.length ? <Empty text="没有待分拣的新信号。可到「信号流」查看全部来源。" /> : <div className="card">{sigs.pending.map(s => <div key={s.id} className="wb-row">
+      tab === 'signals' ? (!sigs.pending.length ? <Empty text="没有待分拣的新信号。可到「信号流」查看全部来源。" /> : <div className="card">{sigs.pending.map((s, i) => <div key={s.id} className={'wb-row' + (i === cur ? ' on' : '')} onClick={() => setCur(i)}>
+        {mark(s.id, i)}
         <div className="sp"><b>{s.title}</b><div className="mut">{s.source} · {fmt(s.ts)}{s.ind ? ' · ' + s.ind : ''}</div></div>
         <div className="inbox-act"><button className="s" onClick={() => actSig(s, 'save')}><I n="save-3-line" />保存</button>
           <button className="s" onClick={() => actSig(s, 'snooze', { days })}>稍后</button>
           <button className="s" onClick={() => actSig(s, 'dismiss')}>忽略</button>
           {s.url && <button className="s" onClick={() => api.call('open:url', s.url)}>打开源页</button>}</div>
       </div>)}</div>) :
-      tab === 'snoozed' ? <InboxList opps={g.snoozed} sigs={sigs.snoozed} open={open} oppCtx={oppCtx} empty="没有稍后处理的条目。到期会自动回到待分拣。" extra={o => <button className="s" onClick={e => { e.stopPropagation(); actOpp(o, 'restore'); }}>放回</button>} /> :
-      tab === 'saved' ? <InboxList opps={g.saved} sigs={sigs.saved} open={open} oppCtx={oppCtx} empty="还没有收录的机会。在待分拣里点「收录」会移到初筛并加入观察。" /> :
-      tab === 'dismissed' ? <InboxList opps={g.dismissed} sigs={sigs.dismissed} open={open} oppCtx={oppCtx} empty="没有已忽略的条目。" extra={o => <button className="s" onClick={e => { e.stopPropagation(); actOpp(o, 'restore'); }}>放回</button>} /> :
-      (!g.pending.length ? <Empty text="待分拣是空的。新的「发现」阶段机会会出现在这里。" /> : <div className="card">{g.pending.map(o => <div key={o.id} className="wb-row" onClick={() => open(o.id, 'work')} onContextMenu={e => oppCtx?.(e, o)}>
+      tab === 'snoozed' ? <InboxList opps={g.snoozed} sigs={sigs.snoozed} open={open} oppCtx={oppCtx} cur={cur} setCur={setCur} picked={picked} togPick={togPick} empty="没有稍后处理的条目。到期会自动回到待分拣。" extra={o => <button className="s" onClick={e => { e.stopPropagation(); actOpp(o, 'restore'); }}>放回</button>} /> :
+      tab === 'saved' ? <InboxList opps={g.saved} sigs={sigs.saved} open={open} oppCtx={oppCtx} cur={cur} setCur={setCur} picked={picked} togPick={togPick} empty="还没有收录的机会。在待分拣里点「收录」会移到初筛并加入观察。" /> :
+      tab === 'dismissed' ? <InboxList opps={g.dismissed} sigs={sigs.dismissed} open={open} oppCtx={oppCtx} cur={cur} setCur={setCur} picked={picked} togPick={togPick} empty="没有已忽略的条目。" extra={o => <button className="s" onClick={e => { e.stopPropagation(); actOpp(o, 'restore'); }}>放回</button>} /> :
+      (!g.pending.length ? <Empty text="待分拣是空的。新的「发现」阶段机会会出现在这里。" /> : <div className="card">{g.pending.map((o, i) => <div key={o.id} className={'wb-row' + (i === cur ? ' on' : '')} onClick={() => { setCur(i); open(o.id, 'work'); }} onContextMenu={e => oppCtx?.(e, o)}>
+        {mark(o.id, i)}
         <span className="score">{o.total}</span>
         <div className="sp"><b>{o.title}</b><div className="mut">{o.industryName} · 信号 {o.metrics?.signals || 0} · {o.sources?.length || 0} 个来源</div></div>
         {rowActs(o)}
       </div>)}</div>)}
   </>;
 }
-function InboxList({ opps, sigs, open, oppCtx, empty, extra }) {
+function InboxList({ opps, sigs, open, oppCtx, empty, extra, cur, setCur, picked, togPick }) {
   if (!opps.length && !sigs?.length) return <Empty text={empty} />;
   return <div className="card">
-    {opps.map(o => <div key={o.id} className="wb-row" onClick={() => open(o.id, 'work')} onContextMenu={e => oppCtx?.(e, o)}>
+    {opps.map((o, i) => <div key={o.id} className={'wb-row' + (i === cur ? ' on' : '')} onClick={() => { setCur?.(i); open(o.id, 'work'); }} onContextMenu={e => oppCtx?.(e, o)}>
+      {togPick ? <input type="checkbox" checked={!!picked?.has(o.id)} aria-label="选中此条" onChange={e => togPick(o.id, e)} onClick={e => e.stopPropagation()} style={{ marginRight: 8 }} /> : null}
       <span className="score">{o.total}</span>
       <div className="sp"><b>{o.title}</b><div className="mut">{o.industryName}{o.snoozeUntil ? ' · 稍后至 ' + o.snoozeUntil : ''} · {STAGES.find(s => s[0] === o.stage)?.[1] || o.stage}</div></div>
       {extra?.(o)}
     </div>)}
-    {(sigs || []).map(s => <div key={s.id} className="wb-row"><div className="sp"><b>{s.title}</b><div className="mut">{s.source} · {fmt(s.ts)}</div></div></div>)}
+    {(sigs || []).map(s => <div key={s.id} className="wb-row">{togPick ? <input type="checkbox" checked={!!picked?.has(s.id)} aria-label="选中此条" onChange={e => togPick(s.id, e)} onClick={e => e.stopPropagation()} style={{ marginRight: 8 }} /> : null}<div className="sp"><b>{s.title}</b><div className="mut">{s.source} · {fmt(s.ts)}</div></div></div>)}
   </div>;
 }
 

@@ -305,6 +305,40 @@ async function saveDoc(md, name, fmt) { const r = await dialog.showSaveDialog(wi
   return r.filePath; }
 
 // ---------- IPC ----------
+
+let lastTriageUndo = null;
+function applyTriage(id, kind, action, extra, silent) {
+  if (kind === 'opp') {
+    const cur = ws(id);
+    const before = WB.snapshotOppTriage({ inboxStatus: cur.inboxStatus, snoozeUntil: cur.snoozeUntil, stage: cur.stage || 'discover', watched: cur.watched });
+    const p = WB.triagePatch(action, extra || {});
+    if (!cur.snapshot) { const j = all('SELECT json FROM opps WHERE id=?', [id])[0]?.json; if (j) p.snapshot = JSON.parse(j); }
+    const after = setWs(id, p);
+    const undo = WB.makeUndoEntry('opp', id, before, action, extra);
+    if (!silent) lastTriageUndo = { batch: false, entries: [undo] };
+    return { id, kind: 'opp', ...after, undo };
+  }
+  const cur = all('SELECT * FROM triage WHERE id=?', [id])[0] || { id, kind: 'signal', status: 'open', snooze_until: '', note: '' };
+  const before = WB.snapshotSigTriage(cur);
+  const p = WB.triagePatch(action, extra || {});
+  const status = p.inboxStatus || cur.status, until = p.snoozeUntil != null ? p.snoozeUntil : (cur.snooze_until || '');
+  run('INSERT OR REPLACE INTO triage VALUES(?,?,?,?,?,?)', [id, 'signal', status, until, cur.note || '', Date.now()]); save();
+  const undo = WB.makeUndoEntry('signal', id, before, action, extra);
+  if (!silent) lastTriageUndo = { batch: false, entries: [undo] };
+  return { id, kind: 'signal', status, snooze_until: until, undo };
+}
+function undoLastTriage() {
+  const pack = lastTriageUndo; if (!pack || !pack.entries || !pack.entries.length) throw new Error('没有可撤销的分拣');
+  lastTriageUndo = null;
+  const out = [];
+  for (const entry of pack.entries.slice().reverse()) {
+    const p = WB.undoTriagePatch(entry);
+    if (entry.kind === 'opp') out.push(setWs(entry.id, p));
+    else { run('INSERT OR REPLACE INTO triage VALUES(?,?,?,?,?,?)', [entry.id, 'signal', p.inboxStatus, p.snoozeUntil || '', (entry.before && entry.before.note) || '', Date.now()]); out.push({ id: entry.id, kind: 'signal', status: p.inboxStatus, snooze_until: p.snoozeUntil || '' }); }
+  }
+  save(); return { undone: out.length };
+}
+
 const H = {
   'win:min': () => win.minimize(), 'win:max': () => (win.isMaximized() ? win.unmaximize() : win.maximize()), 'win:close': () => win.close(), 'win:state': () => ({ max: win.isMaximized() }), 'app:reload': () => win.reload(), 'app:devtools': () => win.webContents.toggleDevTools(), 'app:quit': () => app.quit(),
   'cfg:get': () => getCfg(),
@@ -351,13 +385,14 @@ const H = {
   'brief:weekly': (_, gen) => weeklyBrief(!!gen),
   'inbox:list': () => WB.groupInbox(getOpps()),
   'inbox:signals': (_, q = {}) => WB.signalInbox(all('SELECT id,source,kind,region,title,url,ts,engagement,ind FROM signals ORDER BY ts DESC LIMIT ?', [q.limit || 200]), all("SELECT * FROM triage WHERE kind='signal'")),
-  'inbox:triage': (_, { id, kind, action, extra } = {}) => {
-    if (kind === 'opp') { const p = WB.triagePatch(action, extra || {}); if (!ws(id).snapshot) { const j = all('SELECT json FROM opps WHERE id=?', [id])[0]?.json; if (j) p.snapshot = JSON.parse(j); } return setWs(id, p); }
-    const cur = all('SELECT * FROM triage WHERE id=?', [id])[0] || { id, kind: 'signal', status: 'open', snooze_until: '', note: '' };
-    const p = WB.triagePatch(action, extra || {});
-    const status = p.inboxStatus || cur.status, until = p.snoozeUntil != null ? p.snoozeUntil : (cur.snooze_until || '');
-    run('INSERT OR REPLACE INTO triage VALUES(?,?,?,?,?,?)', [id, 'signal', status, until, cur.note || '', Date.now()]); save();
-    return { id, kind: 'signal', status, snooze_until: until };
+  'inbox:triage': (_, { id, kind, action, extra } = {}) => applyTriage(id, kind || 'opp', action, extra),
+  'inbox:undo': () => undoLastTriage(),
+  'inbox:batch': (_, { ids, kind, action, extra } = {}) => {
+    const plan = WB.batchTriagePlan(ids, action, extra || {});
+    const entries = [];
+    for (const { id } of plan) entries.push(applyTriage(id, kind || 'opp', action, extra, true));
+    lastTriageUndo = { batch: true, entries: entries.map(e => e.undo).filter(Boolean) };
+    return { count: plan.length };
   },
   'tasks:list': (_, opp_id) => withOppTitles(opp_id ? all('SELECT * FROM tasks WHERE opp_id=? ORDER BY done, due, created DESC', [opp_id]) : all('SELECT * FROM tasks ORDER BY done, due, created DESC')),
   'tasks:add': (_, { opp_id, title, due, note } = {}) => {

@@ -297,9 +297,40 @@ function workspaceDigest(o = {}, ctx = {}, today) {
   return { chokes: chokes.slice(0, 4), papers: papers || null, macroReady: !!(macro && macro.ts), nextHint, bullets };
 }
 
+
+function snapshotOppTriage(o = {}) {
+  return { inboxStatus: o.inboxStatus || 'open', snoozeUntil: o.snoozeUntil || '', stage: o.stage || 'discover', watched: !!o.watched };
+}
+function snapshotSigTriage(row = {}) {
+  return { status: row.status || row.inboxStatus || 'open', snooze_until: row.snooze_until || row.snoozeUntil || '', note: row.note || '' };
+}
+function undoTriagePatch(entry) {
+  if (!entry || !entry.before) throw new Error('没有可撤销的分拣');
+  if (entry.kind === 'signal') {
+    return { inboxStatus: entry.before.status || 'open', snoozeUntil: entry.before.snooze_until || '' };
+  }
+  const b = entry.before;
+  return { inboxStatus: b.inboxStatus || 'open', snoozeUntil: b.snoozeUntil || '', stage: b.stage, watched: b.watched };
+}
+function makeUndoEntry(kind, id, before, action, extra, now = Date.now()) {
+  return { kind, id, before: { ...(before || {}) }, action, extra: extra || {}, at: now };
+}
+function batchTriagePlan(ids, action, extra = {}, now = Date.now()) {
+  const list = [...new Set((ids || []).filter(Boolean))];
+  if (!list.length) throw new Error('没有选中的条目');
+  const patch = triagePatch(action, extra, now);
+  return list.map(id => ({ id, patch }));
+}
+function inboxKeyAction(key, { meta, ctrl, alt, repeat, typing } = {}) {
+  if (meta || ctrl || alt || typing) return null;
+  if (repeat && !['j', 'k', 'ArrowDown', 'ArrowUp'].includes(key)) return null;
+  const map = { j: 'next', ArrowDown: 'next', k: 'prev', ArrowUp: 'prev', e: 'save', s: 'save', z: 'snooze', x: 'dismiss', u: 'undo', Enter: 'open', Escape: 'clear' };
+  return map[key] || null;
+}
+
 module.exports = {
   STAGE_CN, STAGE_NEXT, ACTIVE_STAGES, todaySH, addDaysSH, weekStartSH, weekKey, nextStage, migrate,
   inboxStatusOf, isPending, groupInbox, triagePatch, newTaskId, normalizeTask, taskState, dueTasks,
   csvEscape, escHtml, pipelineRows, pipelineCsv, pipelineHtml, loopBriefSections, signalInbox,
-  ROLE_HOME, resolveHomeView, lastRefreshSummary, emptyStateCopy, taskAlertHits, notifOpenTarget, workspaceDigest
+  ROLE_HOME, resolveHomeView, lastRefreshSummary, emptyStateCopy, taskAlertHits, notifOpenTarget, workspaceDigest, snapshotOppTriage, snapshotSigTriage, undoTriagePatch, makeUndoEntry, batchTriagePlan, inboxKeyAction
 };
